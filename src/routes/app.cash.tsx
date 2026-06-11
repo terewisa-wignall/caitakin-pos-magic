@@ -77,15 +77,19 @@ function CashPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3 text-sm">
-              {(["MXN", "USD", "EUR"] as const).map((c) => (
-                <div key={c} className="border rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{c}</p>
-                  <p className="text-xs">Apertura: <span className="font-numeric">{formatMoney(Number(session.data[`opening_amount_${c.toLowerCase()}`] || 0), c)}</span></p>
-                  <p className="text-xs text-success">+ {formatMoney(summary[c].income, c)}</p>
-                  <p className="text-xs text-destructive">− {formatMoney(summary[c].expense, c)}</p>
-                  <p className="font-numeric font-semibold mt-1">{formatMoney(Number(session.data[`opening_amount_${c.toLowerCase()}`] || 0) + summary[c].income - summary[c].expense, c)}</p>
-                </div>
-              ))}
+              {(["MXN", "USD", "EUR"] as const).map((c) => {
+                const s: any = session.data;
+                const opening = Number(s?.[`opening_amount_${c.toLowerCase()}`] || 0);
+                return (
+                  <div key={c} className="border rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">{c}</p>
+                    <p className="text-xs">Apertura: <span className="font-numeric">{formatMoney(opening, c)}</span></p>
+                    <p className="text-xs text-success">+ {formatMoney(summary[c].income, c)}</p>
+                    <p className="text-xs text-destructive">− {formatMoney(summary[c].expense, c)}</p>
+                    <p className="font-numeric font-semibold mt-1">{formatMoney(opening + summary[c].income - summary[c].expense, c)}</p>
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

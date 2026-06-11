@@ -39,6 +39,7 @@ function PublicTicket() {
   if (q.error || !q.data?.order) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Ticket no encontrado</div>;
 
   const { order, items, payments, sellerName } = q.data;
+  const cur = (order.currency as any) || "MXN";
   const url = typeof window !== "undefined" ? `${window.location.origin}/t/${token}` : "";
 
   return (
