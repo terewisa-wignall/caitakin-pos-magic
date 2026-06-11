@@ -62,9 +62,9 @@ function PublicTicket() {
               <li key={it.id} className="flex justify-between gap-2">
                 <span className="min-w-0">
                   <span className="block truncate">{it.product_name_snapshot}</span>
-                  <span className="text-xs text-muted-foreground">{it.variant_snapshot} · {it.quantity} × {formatMoney(Number(it.unit_price), order.currency)}</span>
+                  <span className="text-xs text-muted-foreground">{it.variant_snapshot} · {it.quantity} × {formatMoney(Number(it.unit_price), cur)}</span>
                 </span>
-                <span className="font-numeric font-medium">{formatMoney(Number(it.total), order.currency)}</span>
+                <span className="font-numeric font-medium">{formatMoney(Number(it.total), cur)}</span>
               </li>
             ))}
           </ul>
@@ -72,13 +72,13 @@ function PublicTicket() {
           <div className="space-y-1 text-sm">
             <div className="flex justify-between"><span>Subtotal</span><span className="font-numeric">{formatMoney(Number(order.subtotal))}</span></div>
             {Number(order.discount) > 0 && <div className="flex justify-between"><span>Descuento</span><span className="font-numeric">−{formatMoney(Number(order.discount))}</span></div>}
-            <div className="flex justify-between text-lg font-bold pt-1"><span>Total</span><span className="font-numeric text-primary">{formatMoney(Number(order.total), order.currency)}</span></div>
+            <div className="flex justify-between text-lg font-bold pt-1"><span>Total</span><span className="font-numeric text-primary">{formatMoney(Number(order.total), cur)}</span></div>
           </div>
           <div className="border-t border-dashed my-3"></div>
           <p className="text-xs font-medium mb-1">Pagos</p>
           <ul className="text-xs space-y-0.5">
             {payments.map((p: any) => (
-              <li key={p.id} className="flex justify-between"><span>{p.payment_method}</span><span className="font-numeric">{formatMoney(Number(p.amount), p.currency)}</span></li>
+              <li key={p.id} className="flex justify-between"><span>{p.payment_method}</span><span className="font-numeric">{formatMoney(Number(p.amount), (p.currency as any))}</span></li>
             ))}
           </ul>
           <div className="flex justify-center mt-4">
