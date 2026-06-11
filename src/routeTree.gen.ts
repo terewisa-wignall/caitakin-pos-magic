@@ -13,8 +13,16 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as TTokenRouteImport } from './routes/t.$token'
+import { Route as AppUsersRouteImport } from './routes/app.users'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppSellRouteImport } from './routes/app.sell'
+import { Route as AppReportsRouteImport } from './routes/app.reports'
+import { Route as AppInventoryRouteImport } from './routes/app.inventory'
 import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
+import { Route as AppCommissionsRouteImport } from './routes/app.commissions'
+import { Route as AppCashRouteImport } from './routes/app.cash'
+import { Route as AppInventoryProductIdRouteImport } from './routes/app.inventory.$productId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -36,9 +44,34 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const TTokenRoute = TTokenRouteImport.update({
+  id: '/t/$token',
+  path: '/t/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppUsersRoute = AppUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSellRoute = AppSellRouteImport.update({
   id: '/sell',
   path: '/sell',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventoryRoute = AppInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
@@ -46,50 +79,125 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCommissionsRoute = AppCommissionsRouteImport.update({
+  id: '/commissions',
+  path: '/commissions',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCashRoute = AppCashRouteImport.update({
+  id: '/cash',
+  path: '/cash',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventoryProductIdRoute = AppInventoryProductIdRouteImport.update({
+  id: '/$productId',
+  path: '/$productId',
+  getParentRoute: () => AppInventoryRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
+  '/app/cash': typeof AppCashRoute
+  '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/inventory': typeof AppInventoryRouteWithChildren
+  '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/users': typeof AppUsersRoute
+  '/t/$token': typeof TTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/inventory/$productId': typeof AppInventoryProductIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/app/cash': typeof AppCashRoute
+  '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/inventory': typeof AppInventoryRouteWithChildren
+  '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/users': typeof AppUsersRoute
+  '/t/$token': typeof TTokenRoute
   '/app': typeof AppIndexRoute
+  '/app/inventory/$productId': typeof AppInventoryProductIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
+  '/app/cash': typeof AppCashRoute
+  '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/inventory': typeof AppInventoryRouteWithChildren
+  '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/users': typeof AppUsersRoute
+  '/t/$token': typeof TTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/inventory/$productId': typeof AppInventoryProductIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/auth' | '/app/dashboard' | '/app/sell' | '/app/'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/auth'
+    | '/app/cash'
+    | '/app/commissions'
+    | '/app/dashboard'
+    | '/app/inventory'
+    | '/app/reports'
+    | '/app/sell'
+    | '/app/settings'
+    | '/app/users'
+    | '/t/$token'
+    | '/app/'
+    | '/app/inventory/$productId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/app/dashboard' | '/app/sell' | '/app'
+  to:
+    | '/'
+    | '/auth'
+    | '/app/cash'
+    | '/app/commissions'
+    | '/app/dashboard'
+    | '/app/inventory'
+    | '/app/reports'
+    | '/app/sell'
+    | '/app/settings'
+    | '/app/users'
+    | '/t/$token'
+    | '/app'
+    | '/app/inventory/$productId'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/auth'
+    | '/app/cash'
+    | '/app/commissions'
     | '/app/dashboard'
+    | '/app/inventory'
+    | '/app/reports'
     | '/app/sell'
+    | '/app/settings'
+    | '/app/users'
+    | '/t/$token'
     | '/app/'
+    | '/app/inventory/$productId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
+  TTokenRoute: typeof TTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -122,11 +230,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/t/$token': {
+      id: '/t/$token'
+      path: '/t/$token'
+      fullPath: '/t/$token'
+      preLoaderRoute: typeof TTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/users': {
+      id: '/app/users'
+      path: '/users'
+      fullPath: '/app/users'
+      preLoaderRoute: typeof AppUsersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/sell': {
       id: '/app/sell'
       path: '/sell'
       fullPath: '/app/sell'
       preLoaderRoute: typeof AppSellRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/inventory': {
+      id: '/app/inventory'
+      path: '/inventory'
+      fullPath: '/app/inventory'
+      preLoaderRoute: typeof AppInventoryRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/dashboard': {
@@ -136,18 +279,63 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/commissions': {
+      id: '/app/commissions'
+      path: '/commissions'
+      fullPath: '/app/commissions'
+      preLoaderRoute: typeof AppCommissionsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/cash': {
+      id: '/app/cash'
+      path: '/cash'
+      fullPath: '/app/cash'
+      preLoaderRoute: typeof AppCashRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/inventory/$productId': {
+      id: '/app/inventory/$productId'
+      path: '/$productId'
+      fullPath: '/app/inventory/$productId'
+      preLoaderRoute: typeof AppInventoryProductIdRouteImport
+      parentRoute: typeof AppInventoryRoute
+    }
   }
 }
 
+interface AppInventoryRouteChildren {
+  AppInventoryProductIdRoute: typeof AppInventoryProductIdRoute
+}
+
+const AppInventoryRouteChildren: AppInventoryRouteChildren = {
+  AppInventoryProductIdRoute: AppInventoryProductIdRoute,
+}
+
+const AppInventoryRouteWithChildren = AppInventoryRoute._addFileChildren(
+  AppInventoryRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppCashRoute: typeof AppCashRoute
+  AppCommissionsRoute: typeof AppCommissionsRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppInventoryRoute: typeof AppInventoryRouteWithChildren
+  AppReportsRoute: typeof AppReportsRoute
   AppSellRoute: typeof AppSellRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCashRoute: AppCashRoute,
+  AppCommissionsRoute: AppCommissionsRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppInventoryRoute: AppInventoryRouteWithChildren,
+  AppReportsRoute: AppReportsRoute,
   AppSellRoute: AppSellRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -157,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
+  TTokenRoute: TTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
