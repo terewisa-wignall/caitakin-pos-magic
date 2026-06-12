@@ -4,12 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ChevronLeft, Plus, Trash2, Save } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
+import { SizeSetPicker } from "@/components/size-set-picker";
 
 export const Route = createFileRoute("/app/inventory/$productId")({
   component: ProductDetail,
@@ -106,15 +108,24 @@ function ProductDetail() {
             <div key={v.id} className="grid grid-cols-[1fr_80px_auto] gap-2 items-center border rounded-lg p-3">
               <div className="min-w-0">
                 <p className="font-medium truncate">{v.variant_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {[v.size, v.color].filter(Boolean).join(" · ") || "—"}
-                  {v.price_override_mxn && ` · $${Number(v.price_override_mxn).toFixed(2)}`}
-                </p>
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  {v.size && <Badge variant="secondary" className="font-numeric">{v.size}</Badge>}
+                  {v.color && <Badge variant="outline">{v.color}</Badge>}
+                  {v.price_override_mxn && (
+                    <span className="text-xs text-muted-foreground font-numeric">
+                      ${Number(v.price_override_mxn).toFixed(2)}
+                    </span>
+                  )}
+                  {!v.size && !v.color && !v.price_override_mxn && (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </div>
               </div>
               <Input
                 type="number" defaultValue={v.stock} className="font-numeric h-9"
                 onBlur={(e) => { const n = Number(e.target.value); if (n !== v.stock && isAdmin) updateVariantStock(v.id, n); }}
                 disabled={!isAdmin}
+                aria-label="Stock"
               />
               {isAdmin && (
                 <Button size="icon" variant="ghost" className="text-destructive" onClick={() => removeVariant(v.id)}>
@@ -127,16 +138,28 @@ function ProductDetail() {
         </div>
 
         {isAdmin && (
-          <div className="mt-4 border-t pt-4 space-y-2">
-            <p className="text-sm font-medium">Agregar variante</p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <Input placeholder="Nombre*" value={variantDraft.variant_name} onChange={(e) => setVariantDraft({ ...variantDraft, variant_name: e.target.value })} className="col-span-2 sm:col-span-1" />
-              <Input placeholder="Talla" value={variantDraft.size} onChange={(e) => setVariantDraft({ ...variantDraft, size: e.target.value })} />
-              <Input placeholder="Color" value={variantDraft.color} onChange={(e) => setVariantDraft({ ...variantDraft, color: e.target.value })} />
-              <Input type="number" placeholder="Stock" value={variantDraft.stock} onChange={(e) => setVariantDraft({ ...variantDraft, stock: Number(e.target.value) })} className="font-numeric" />
-              <Input type="number" placeholder="Precio MXN" value={variantDraft.price_override_mxn} onChange={(e) => setVariantDraft({ ...variantDraft, price_override_mxn: e.target.value })} className="font-numeric" />
-            </div>
-            <Button size="sm" onClick={addVariant} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" /> Agregar</Button>
+          <div className="mt-5 space-y-3">
+            <SizeSetPicker
+              productId={productId}
+              categoryName={p.categories?.name}
+              onCreated={() => qc.invalidateQueries({ queryKey: ["product", productId] })}
+            />
+
+            <Accordion type="single" collapsible>
+              <AccordionItem value="manual" className="border rounded-lg px-3">
+                <AccordionTrigger className="text-sm py-3">Agregar una variante manual</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pb-2">
+                    <Input placeholder="Nombre*" value={variantDraft.variant_name} onChange={(e) => setVariantDraft({ ...variantDraft, variant_name: e.target.value })} className="col-span-2 sm:col-span-1" />
+                    <Input placeholder="Talla" value={variantDraft.size} onChange={(e) => setVariantDraft({ ...variantDraft, size: e.target.value })} />
+                    <Input placeholder="Color" value={variantDraft.color} onChange={(e) => setVariantDraft({ ...variantDraft, color: e.target.value })} />
+                    <Input type="number" placeholder="Stock" value={variantDraft.stock} onChange={(e) => setVariantDraft({ ...variantDraft, stock: Number(e.target.value) })} className="font-numeric" />
+                    <Input type="number" placeholder="Precio MXN" value={variantDraft.price_override_mxn} onChange={(e) => setVariantDraft({ ...variantDraft, price_override_mxn: e.target.value })} className="font-numeric" />
+                  </div>
+                  <Button size="sm" onClick={addVariant} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" /> Agregar</Button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
         )}
       </Card>
