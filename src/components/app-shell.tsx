@@ -4,7 +4,8 @@ import {
   LayoutDashboard, ShoppingCart, Package, Wallet, BarChart3,
   Settings, Users, Coins, LogOut, Menu,
 } from "lucide-react";
-import logo from "@/assets/logo.png";
+import logoAsset from "@/assets/logo.png.asset.json";
+const logo = logoAsset.url;
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";

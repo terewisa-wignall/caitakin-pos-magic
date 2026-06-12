@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import logo from "@/assets/logo.png";
+import logoAsset from "@/assets/logo.png.asset.json";
+const logo = logoAsset.url;
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Iniciar sesión · CAsitakin" }] }),

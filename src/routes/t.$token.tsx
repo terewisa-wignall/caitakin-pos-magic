@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
 import { formatMoney, formatDate } from "@/lib/format";
-import logo from "@/assets/logo.png";
+import logoAsset from "@/assets/logo.png.asset.json";
+const logo = logoAsset.url;
 import { Printer } from "lucide-react";
 
 export const Route = createFileRoute("/t/$token")({
