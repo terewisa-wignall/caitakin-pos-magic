@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { getPublicTicket } from "@/lib/tickets.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
@@ -15,24 +16,11 @@ export const Route = createFileRoute("/t/$token")({
 
 function PublicTicket() {
   const { token } = Route.useParams();
+  const fetchTicket = useServerFn(getPublicTicket);
 
   const q = useQuery({
     queryKey: ["public-ticket", token],
-    queryFn: async () => {
-      const { data: ticket, error } = await supabase.from("tickets").select("order_id,created_at").eq("public_token", token).maybeSingle();
-      if (error || !ticket) throw new Error("Ticket no encontrado");
-      const [{ data: order }, { data: items }, { data: payments }] = await Promise.all([
-        supabase.from("orders").select("*").eq("id", ticket.order_id).single(),
-        supabase.from("order_items").select("*").eq("order_id", ticket.order_id),
-        supabase.from("payments").select("*").eq("order_id", ticket.order_id),
-      ]);
-      let sellerName = "—";
-      if (order?.seller_id) {
-        const { data: prof } = await supabase.from("profiles").select("name").eq("id", order.seller_id).maybeSingle();
-        sellerName = prof?.name || "—";
-      }
-      return { ticket, order, items: items ?? [], payments: payments ?? [], sellerName };
-    },
+    queryFn: () => fetchTicket({ data: { token } }),
   });
 
   if (q.isLoading) return <div className="min-h-screen flex items-center justify-center">Cargando ticket...</div>;
