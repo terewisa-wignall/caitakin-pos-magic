@@ -19,6 +19,7 @@ import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppSellRouteImport } from './routes/app.sell'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppInventoryRouteImport } from './routes/app.inventory'
+import { Route as AppFinanceRouteImport } from './routes/app.finance'
 import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
 import { Route as AppCommissionsRouteImport } from './routes/app.commissions'
 import { Route as AppCashRouteImport } from './routes/app.cash'
@@ -74,6 +75,11 @@ const AppInventoryRoute = AppInventoryRouteImport.update({
   path: '/inventory',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFinanceRoute = AppFinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/app/cash': typeof AppCashRoute
   '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/finance': typeof AppFinanceRoute
   '/app/inventory': typeof AppInventoryRouteWithChildren
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/app/cash': typeof AppCashRoute
   '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/finance': typeof AppFinanceRoute
   '/app/inventory': typeof AppInventoryRouteWithChildren
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/app/cash': typeof AppCashRoute
   '/app/commissions': typeof AppCommissionsRoute
   '/app/dashboard': typeof AppDashboardRoute
+  '/app/finance': typeof AppFinanceRoute
   '/app/inventory': typeof AppInventoryRouteWithChildren
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/app/cash'
     | '/app/commissions'
     | '/app/dashboard'
+    | '/app/finance'
     | '/app/inventory'
     | '/app/reports'
     | '/app/sell'
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/app/cash'
     | '/app/commissions'
     | '/app/dashboard'
+    | '/app/finance'
     | '/app/inventory'
     | '/app/reports'
     | '/app/sell'
@@ -183,6 +194,7 @@ export interface FileRouteTypes {
     | '/app/cash'
     | '/app/commissions'
     | '/app/dashboard'
+    | '/app/finance'
     | '/app/inventory'
     | '/app/reports'
     | '/app/sell'
@@ -272,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInventoryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/finance': {
+      id: '/app/finance'
+      path: '/finance'
+      fullPath: '/app/finance'
+      preLoaderRoute: typeof AppFinanceRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/dashboard': {
       id: '/app/dashboard'
       path: '/dashboard'
@@ -319,6 +338,7 @@ interface AppRouteChildren {
   AppCashRoute: typeof AppCashRoute
   AppCommissionsRoute: typeof AppCommissionsRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppFinanceRoute: typeof AppFinanceRoute
   AppInventoryRoute: typeof AppInventoryRouteWithChildren
   AppReportsRoute: typeof AppReportsRoute
   AppSellRoute: typeof AppSellRoute
@@ -331,6 +351,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCashRoute: AppCashRoute,
   AppCommissionsRoute: AppCommissionsRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppFinanceRoute: AppFinanceRoute,
   AppInventoryRoute: AppInventoryRouteWithChildren,
   AppReportsRoute: AppReportsRoute,
   AppSellRoute: AppSellRoute,

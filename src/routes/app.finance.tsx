@@ -14,8 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  TrendingUp, TrendingDown, Wallet, Users, Coins, Lock, Plus,
-  ChevronLeft, ChevronRight, ReceiptText, Briefcase, FileBarChart,
+  TrendingUp, TrendingDown, Users, Coins, Lock, Plus,
+  ChevronLeft, ChevronRight, Briefcase, FileBarChart,
 } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
