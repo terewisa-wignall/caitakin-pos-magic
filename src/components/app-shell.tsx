@@ -2,7 +2,7 @@ import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet, BarChart3,
-  Settings, Users, Coins, LogOut, Menu,
+  Settings, Users, Coins, LogOut, Menu, Landmark,
 } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 const logo = logoAsset.url;
@@ -22,6 +22,7 @@ const items: NavItem[] = [
   { to: "/app/cash", label: "Caja", icon: Wallet },
   { to: "/app/reports", label: "Reportes", icon: BarChart3 },
   { to: "/app/commissions", label: "Comisiones", icon: Coins },
+  { to: "/app/finance", label: "Finanzas", icon: Landmark, adminOnly: true },
   { to: "/app/users", label: "Usuarios", icon: Users, adminOnly: true },
   { to: "/app/settings", label: "Configuración", icon: Settings, adminOnly: true },
 ];

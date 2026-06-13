@@ -1,83 +1,66 @@
-## Objetivo
+## Módulo "Finanzas" (solo admin)
 
-1. Reemplazar el logo actual por el bordado **circular de CAsitakin** que subiste, conservando la paleta actual.
-2. Permitir agregar **tallas rápidas** al inventario por tipo de categoría (Niños, Niñas, Damas, Caballeros, Unitalla, Numérico), para no tener que crear cada variante una por una.
+Nueva sección que vive en paralelo a Caja. Caja sigue siendo el operativo del día. Finanzas es la vista del negocio: consolida automáticamente las ventas y movimientos de caja, y suma los registros nuevos (gastos fijos, variables, imprevistos, nómina, comisiones pagadas).
 
-No se cambia la paleta, ni la estructura del POS, ni el resto de pantallas.
+### Navegación
+Nuevo ítem "Finanzas" en el menú lateral (solo visible para admin), con sub-secciones internas por tabs:
+- Resumen · Ingresos · Gastos · Nómina · Comisiones · Cierres
 
----
-
-## 1. Logo bordado
-
-- Subo la imagen circular bordada (`ChatGPT_Image_11_jun_2026_04_49_54_p.m..png`) como asset CDN (`src/assets/logo.png.asset.json`) usando `lovable-assets`.
-- Elimino el `src/assets/logo.png` actual (el minimalista generado).
-- Actualizo los 3 lugares que ya importan `@/assets/logo.png` para que importen el pointer JSON y usen su `url`:
-  - `src/components/app-shell.tsx` (header sidebar y top-bar móvil)
-  - `src/routes/auth.tsx` (pantalla de login)
-  - `src/routes/t.$token.tsx` (ticket público)
-- En el ticket impreso y la barra superior conservo el tamaño actual; el logo circular queda perfecto como ícono cuadrado.
-- Como bonus rápido: actualizo el `<title>` y el favicon del root para que apunte al mismo asset (la pestaña del navegador también muestra el logo).
+Mismo lenguaje visual actual (cards, íconos lucide, paleta intacta, mobile-first).
 
 ---
 
-## 2. Tallas rápidas por categoría
+### 1. Resumen (pantalla principal)
+Cards arriba con filtro de mes (selector simple "Junio 2026 ▾"):
+- Ingresos del mes (ventas + ingresos de caja)
+- Gastos del mes (fijos + variables + imprevistos)
+- Nómina pagada
+- Comisiones pagadas
+- **Utilidad del mes** (ingresos − gastos − nómina − comisiones), verde/rojo
+- Mini gráfica de barras: utilidad mes a mes del año en curso
 
-### Problema actual
+### 2. Ingresos
+Lista consolidada (solo lectura, viene de ventas y de `cash_movements` tipo income). Filtros: mes, origen (venta / caja / otro). Permite registrar "Otro ingreso" manual (renta cobrada, devolución de proveedor, etc.).
 
-En el detalle del producto sólo hay un formulario que agrega **una variante a la vez** con campos libres (nombre, talla, color, stock, precio). Cargar un vestido con 6 tallas implica llenar el formulario 6 veces.
+### 3. Gastos
+Una sola pantalla con chips para filtrar por tipo: **Fijo · Variable · Imprevisto**. Botón "+ Nuevo gasto" abre formulario corto:
+- Concepto, monto, moneda, tipo (fijo/variable/imprevisto), categoría libre (renta, luz, papelería…), fecha, método de pago, nota, comprobante (foto opcional al bucket existente).
+- Los fijos tienen toggle "Recurrente mensual" → se sugieren automáticamente cada mes en el resumen ("Pendiente: Renta $X").
 
-### Solución
+### 4. Nómina
+Dos partes:
+- **Empleados**: alta sencilla (nombre, puesto, sueldo, periodicidad: semanal o mensual, activo). Independiente de los usuarios del sistema (no todos los empleados usan la app).
+- **Pagos de nómina**: botón "Registrar pago" → elige empleado, periodo (semana del…/mes de…), monto (pre-llenado con su sueldo, editable), fecha de pago, nota. Queda como gasto en el mes correspondiente.
 
-En la pantalla **Detalle de producto** (`src/routes/app.inventory.$productId.tsx`), arriba del formulario actual de "Agregar variante", añado una sección nueva: **"Agregar set de tallas"**.
+### 5. Comisiones pagadas
+Lista las comisiones existentes (tabla `commissions`) con estado pendiente/pagada. Botón "Marcar como pagada" en lote para el corte del **5** y **20** de cada mes (selector rápido "Corte 5 jun" / "Corte 20 jun" que filtra las pendientes hasta esa fecha). Al pagar se guarda fecha y método.
 
-Componente nuevo (`src/components/size-set-picker.tsx`):
-
-- **Selector de set de tallas** con presets:
-  - Niños: `2, 4, 6, 8, 10, 12, 14`
-  - Niñas: `2, 4, 6, 8, 10, 12, 14`
-  - Damas: `CH, M, G, EG`
-  - Caballeros: `CH, M, G, EG, XG`
-  - Unitalla: `Unitalla`
-  - Numérico mujer: `26, 28, 30, 32, 34`
-  - Numérico hombre: `30, 32, 34, 36, 38`
-  - Calzado: `22, 23, 24, 25, 26, 27, 28`
-  - **Personalizado** (campo de texto separado por comas)
-- Cada talla del set se muestra como **chip seleccionable** — el usuario puede desmarcar las que no aplican.
-- Un solo campo **"Stock por talla"** (se aplica a todas; el stock fino se ajusta luego en la lista).
-- Campo opcional **"Color"** (también se aplica a todas las tallas seleccionadas).
-- Botón **"Crear N variantes"** → inserta todas las variantes en una sola operación (`product_variants` insert batch). El `variant_name` se autogenera como `Talla X` o `Talla X · Color`.
-
-### Mejora del formulario actual
-
-- El formulario individual de "Agregar variante" se queda, pero se colapsa en un acordeón ("Agregar una variante manual") porque el caso común será el bulk.
-- En la lista de variantes existentes muestro la talla y el color como **badges** en vez de texto plano, para que se lea mejor.
-
-### Sugerencia automática del set
-
-Cuando el producto pertenece a una categoría con nombre que contiene `niñ`, `dama`, `caballero`, `unitalla`, etc., el selector **pre-selecciona el set sugerido** (sin forzar — puede cambiarlo).
+### 6. Cierres mensuales y vista anual
+- Botón "Cerrar mes" genera snapshot del mes (totales por categoría + utilidad). No bloquea edición, no traspasa saldo: cada mes queda independiente.
+- Pantalla "Año 2026" con tabla de 12 meses + gráfica: ingresos, gastos, utilidad y un total anual al pie.
+- Cada mes cerrado se puede exportar/imprimir como reporte simple.
 
 ---
 
-## Detalles técnicos
+### Cambios técnicos (resumen)
 
-- No hay cambios de schema: `product_variants` ya tiene `variant_name`, `size`, `color`, `stock`, `price_override_mxn`.
-- El insert batch usa el cliente del navegador con la RLS existente (`admin write variants`).
-- Los presets viven como constante en el componente (`SIZE_SETS`) para poder ajustarlos fácil más adelante.
-- La paleta y los tokens de color (`--primary` terracota, `--secondary` verde suave, `--accent` dorado) **no se tocan**.
+**Base de datos (nuevas tablas, todas RLS solo admin lee/escribe, vendedores no ven nada):**
+- `expenses` (concepto, monto, moneda, tipo enum fijo/variable/imprevisto, categoría, fecha, método, nota, comprobante_url, recurrente, created_by)
+- `employees` (nombre, puesto, sueldo, periodicidad enum weekly/monthly, activo)
+- `payroll_payments` (empleado_id, periodo_inicio, periodo_fin, monto, fecha_pago, nota)
+- `other_incomes` (concepto, monto, moneda, fecha, nota) — ingresos manuales no-venta
+- `commission_payments` (commission_ids[], monto_total, fecha, método, corte_label) + columna `paid_at` en `commissions`
+- `monthly_closings` (año, mes, snapshot jsonb, closed_at, closed_by)
 
----
+**Rutas nuevas:**
+- `src/routes/app.finance.tsx` (layout con tabs)
+- `app.finance.index.tsx` (Resumen), `app.finance.income.tsx`, `app.finance.expenses.tsx`, `app.finance.payroll.tsx`, `app.finance.commissions.tsx`, `app.finance.closings.tsx`
 
-## Archivos afectados
+**Componentes:**
+- `month-picker.tsx`, `expense-form.tsx`, `employee-form.tsx`, `payroll-form.tsx`, `finance-summary-cards.tsx`
 
-| Archivo | Cambio |
-| --- | --- |
-| `src/assets/logo.png.asset.json` | nuevo pointer al logo bordado en CDN |
-| `src/assets/logo.png` | eliminado (binario antiguo) |
-| `src/routes/__root.tsx` | favicon apuntando al nuevo asset |
-| `src/components/app-shell.tsx` | usa `logoAsset.url` |
-| `src/routes/auth.tsx` | usa `logoAsset.url` |
-| `src/routes/t.$token.tsx` | usa `logoAsset.url` |
-| `src/components/size-set-picker.tsx` | **nuevo** — selector de set + chips + insert batch |
-| `src/routes/app.inventory.$productId.tsx` | integra el picker, colapsa form manual, muestra badges |
+**Editado:** `app-shell.tsx` (ítem de menú admin), `app.commissions.tsx` (link a Finanzas).
 
-Tiempo estimado de implementación: corto. Listo para ejecutar cuando lo apruebes.
+Sin cambios a Caja, Inventario ni Ventas. Paleta y logo intactos.
+
+¿Apruebas para empezar por la migración de base de datos?
