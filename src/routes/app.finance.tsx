@@ -626,9 +626,9 @@ function PayrollDialog({ open, preset, employees, onClose }: { open: boolean; pr
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useMemo(() => {
+  useEffect(() => {
     if (preset?.id) { setEmployeeId(preset.id); setAmount(Number(preset.salary || 0)); }
-  }, [preset?.id]);
+  }, [preset?.id, preset?.salary]);
 
   const submit = async () => {
     if (!employeeId || !amount) { toast.error("Empleado y monto"); return; }
