@@ -124,6 +124,56 @@ export type Database = {
         }
         Relationships: []
       }
+      commission_payments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          cutoff_label: string | null
+          id: string
+          note: string | null
+          paid_at: string
+          payment_method: string | null
+          seller_id: string | null
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          cutoff_label?: string | null
+          id?: string
+          note?: string | null
+          paid_at?: string
+          payment_method?: string | null
+          seller_id?: string | null
+          total_amount: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          cutoff_label?: string | null
+          id?: string
+          note?: string | null
+          paid_at?: string
+          payment_method?: string | null
+          seller_id?: string | null
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_payments_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commissions: {
         Row: {
           commission_amount: number
@@ -132,6 +182,9 @@ export type Database = {
           currency: string
           id: string
           order_id: string
+          paid_at: string | null
+          payment_id: string | null
+          payment_method: string | null
           seller_id: string
         }
         Insert: {
@@ -141,6 +194,9 @@ export type Database = {
           currency?: string
           id?: string
           order_id: string
+          paid_at?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
           seller_id: string
         }
         Update: {
@@ -150,6 +206,9 @@ export type Database = {
           currency?: string
           id?: string
           order_id?: string
+          paid_at?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
           seller_id?: string
         }
         Relationships: [
@@ -158,6 +217,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commissions_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "commission_payments"
             referencedColumns: ["id"]
           },
         ]
@@ -183,6 +249,42 @@ export type Database = {
           id?: string
           name?: string | null
           phone?: string | null
+        }
+        Relationships: []
+      }
+      employees: {
+        Row: {
+          created_at: string
+          frequency: Database["public"]["Enums"]["payroll_frequency"]
+          id: string
+          is_active: boolean
+          name: string
+          note: string | null
+          position: string | null
+          salary: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          frequency?: Database["public"]["Enums"]["payroll_frequency"]
+          id?: string
+          is_active?: boolean
+          name: string
+          note?: string | null
+          position?: string | null
+          salary?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          frequency?: Database["public"]["Enums"]["payroll_frequency"]
+          id?: string
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          position?: string | null
+          salary?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -213,6 +315,90 @@ export type Database = {
           is_active?: boolean
           rate?: number
           target_currency?: string
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string | null
+          concept: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          expense_date: string
+          id: string
+          is_recurring: boolean
+          note: string | null
+          payment_method: string | null
+          receipt_url: string | null
+          type: Database["public"]["Enums"]["expense_type"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          concept: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          expense_date?: string
+          id?: string
+          is_recurring?: boolean
+          note?: string | null
+          payment_method?: string | null
+          receipt_url?: string | null
+          type: Database["public"]["Enums"]["expense_type"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          concept?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          expense_date?: string
+          id?: string
+          is_recurring?: boolean
+          note?: string | null
+          payment_method?: string | null
+          receipt_url?: string | null
+          type?: Database["public"]["Enums"]["expense_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      monthly_closings: {
+        Row: {
+          closed_at: string
+          closed_by: string | null
+          created_at: string
+          id: string
+          month: number
+          snapshot: Json
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          closed_at?: string
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          month: number
+          snapshot: Json
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          closed_at?: string
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          month?: number
+          snapshot?: Json
+          updated_at?: string
+          year?: number
         }
         Relationships: []
       }
@@ -324,6 +510,45 @@ export type Database = {
           },
         ]
       }
+      other_incomes: {
+        Row: {
+          amount: number
+          concept: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          income_date: string
+          note: string | null
+          payment_method: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          concept: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          income_date?: string
+          note?: string | null
+          payment_method?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          concept?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          income_date?: string
+          note?: string | null
+          payment_method?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -358,6 +583,59 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          employee_id: string
+          id: string
+          note: string | null
+          paid_at: string
+          payment_method: string | null
+          period_end: string
+          period_start: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          employee_id: string
+          id?: string
+          note?: string | null
+          paid_at?: string
+          payment_method?: string | null
+          period_end: string
+          period_start: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          employee_id?: string
+          id?: string
+          note?: string | null
+          paid_at?: string
+          payment_method?: string | null
+          period_end?: string
+          period_start?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_payments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -570,6 +848,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "seller"
+      expense_type: "fixed" | "variable" | "unexpected"
+      payroll_frequency: "weekly" | "monthly"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -698,6 +978,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "seller"],
+      expense_type: ["fixed", "variable", "unexpected"],
+      payroll_frequency: ["weekly", "monthly"],
     },
   },
 } as const
