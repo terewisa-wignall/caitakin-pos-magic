@@ -22,6 +22,7 @@ const items: NavItem[] = [
   { to: "/app/cash", label: "Caja", icon: Wallet },
   { to: "/app/reports", label: "Reportes", icon: BarChart3 },
   { to: "/app/commissions", label: "Comisiones", icon: Coins },
+  { to: "/app/finance", label: "Finanzas", icon: Landmark, adminOnly: true },
   { to: "/app/users", label: "Usuarios", icon: Users, adminOnly: true },
   { to: "/app/settings", label: "Configuración", icon: Settings, adminOnly: true },
 ];
