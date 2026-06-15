@@ -725,6 +725,8 @@ export type Database = {
           created_at: string
           currency: string
           customer_id: string | null
+          customer_id_file_name: string | null
+          customer_id_file_path: string | null
           discount: number
           exchange_rate_used: number
           id: string
@@ -737,6 +739,8 @@ export type Database = {
           created_at?: string
           currency?: string
           customer_id?: string | null
+          customer_id_file_name?: string | null
+          customer_id_file_path?: string | null
           discount?: number
           exchange_rate_used?: number
           id?: string
@@ -749,6 +753,8 @@ export type Database = {
           created_at?: string
           currency?: string
           customer_id?: string | null
+          customer_id_file_name?: string | null
+          customer_id_file_path?: string | null
           discount?: number
           exchange_rate_used?: number
           id?: string
@@ -809,30 +815,39 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          bank: string | null
           created_at: string
           currency: string
           exchange_rate_used: number
           id: string
           order_id: string
           payment_method: string
+          voucher_file_name: string | null
+          voucher_file_path: string | null
         }
         Insert: {
           amount: number
+          bank?: string | null
           created_at?: string
           currency: string
           exchange_rate_used?: number
           id?: string
           order_id: string
           payment_method: string
+          voucher_file_name?: string | null
+          voucher_file_path?: string | null
         }
         Update: {
           amount?: number
+          bank?: string | null
           created_at?: string
           currency?: string
           exchange_rate_used?: number
           id?: string
           order_id?: string
           payment_method?: string
+          voucher_file_name?: string | null
+          voucher_file_path?: string | null
         }
         Relationships: [
           {
