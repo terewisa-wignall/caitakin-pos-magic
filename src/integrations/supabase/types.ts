@@ -252,41 +252,250 @@ export type Database = {
         }
         Relationships: []
       }
-      employees: {
+      employee_documents: {
         Row: {
           created_at: string
+          doc_type: string
+          employee_id: string
+          file_name: string
+          file_path: string
+          id: string
+          mime_type: string | null
+          note: string | null
+          size_bytes: number | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          doc_type?: string
+          employee_id: string
+          file_name: string
+          file_path: string
+          id?: string
+          mime_type?: string | null
+          note?: string | null
+          size_bytes?: number | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          doc_type?: string
+          employee_id?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          mime_type?: string | null
+          note?: string | null
+          size_bytes?: number | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_loans: {
+        Row: {
+          balance: number
+          created_at: string
+          currency: string
+          employee_id: string
+          id: string
+          installment_amount: number | null
+          mode: string
+          note: string | null
+          principal: number
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          balance: number
+          created_at?: string
+          currency?: string
+          employee_id: string
+          id?: string
+          installment_amount?: number | null
+          mode?: string
+          note?: string | null
+          principal: number
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          currency?: string
+          employee_id?: string
+          id?: string
+          installment_amount?: number | null
+          mode?: string
+          note?: string | null
+          principal?: number
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_loans_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          address: string | null
+          birth_date: string | null
+          created_at: string
+          curp: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
           frequency: Database["public"]["Enums"]["payroll_frequency"]
+          hire_date: string | null
           id: string
           is_active: boolean
           name: string
           note: string | null
+          nss: string | null
+          phone: string | null
           position: string | null
+          profile_id: string | null
+          rfc: string | null
           salary: number
+          termination_date: string | null
           updated_at: string
         }
         Insert: {
+          address?: string | null
+          birth_date?: string | null
           created_at?: string
+          curp?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           frequency?: Database["public"]["Enums"]["payroll_frequency"]
+          hire_date?: string | null
           id?: string
           is_active?: boolean
           name: string
           note?: string | null
+          nss?: string | null
+          phone?: string | null
           position?: string | null
+          profile_id?: string | null
+          rfc?: string | null
           salary?: number
+          termination_date?: string | null
           updated_at?: string
         }
         Update: {
+          address?: string | null
+          birth_date?: string | null
           created_at?: string
+          curp?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           frequency?: Database["public"]["Enums"]["payroll_frequency"]
+          hire_date?: string | null
           id?: string
           is_active?: boolean
           name?: string
           note?: string | null
+          nss?: string | null
+          phone?: string | null
           position?: string | null
+          profile_id?: string | null
+          rfc?: string | null
           salary?: number
+          termination_date?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "employees_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employment_contracts: {
+        Row: {
+          base_amount: number
+          contract_type: string
+          created_at: string
+          currency: string
+          employee_id: string
+          end_date: string | null
+          id: string
+          imss_employer_number: string | null
+          imss_enrolled: boolean
+          infonavit_enrolled: boolean
+          infonavit_type: string | null
+          infonavit_value: number | null
+          is_active: boolean
+          note: string | null
+          pay_schedule: Database["public"]["Enums"]["payroll_frequency"]
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          base_amount?: number
+          contract_type?: string
+          created_at?: string
+          currency?: string
+          employee_id: string
+          end_date?: string | null
+          id?: string
+          imss_employer_number?: string | null
+          imss_enrolled?: boolean
+          infonavit_enrolled?: boolean
+          infonavit_type?: string | null
+          infonavit_value?: number | null
+          is_active?: boolean
+          note?: string | null
+          pay_schedule?: Database["public"]["Enums"]["payroll_frequency"]
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          base_amount?: number
+          contract_type?: string
+          created_at?: string
+          currency?: string
+          employee_id?: string
+          end_date?: string | null
+          id?: string
+          imss_employer_number?: string | null
+          imss_enrolled?: boolean
+          infonavit_enrolled?: boolean
+          infonavit_type?: string | null
+          infonavit_value?: number | null
+          is_active?: boolean
+          note?: string | null
+          pay_schedule?: Database["public"]["Enums"]["payroll_frequency"]
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_contracts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       exchange_rates: {
         Row: {
@@ -368,6 +577,54 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      loan_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          loan_id: string
+          note: string | null
+          paid_at: string
+          payroll_payment_id: string | null
+          source: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          loan_id: string
+          note?: string | null
+          paid_at?: string
+          payroll_payment_id?: string | null
+          source?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          loan_id?: string
+          note?: string | null
+          paid_at?: string
+          payroll_payment_id?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loan_payments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "employee_loans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_payments_payroll_payment_id_fkey"
+            columns: ["payroll_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_payments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       monthly_closings: {
         Row: {
@@ -594,7 +851,12 @@ export type Database = {
           created_by: string | null
           currency: string
           employee_id: string
+          gross_amount: number | null
           id: string
+          imss_deduction: number
+          infonavit_deduction: number
+          loan_deduction: number
+          loan_id: string | null
           note: string | null
           paid_at: string
           payment_method: string | null
@@ -608,7 +870,12 @@ export type Database = {
           created_by?: string | null
           currency?: string
           employee_id: string
+          gross_amount?: number | null
           id?: string
+          imss_deduction?: number
+          infonavit_deduction?: number
+          loan_deduction?: number
+          loan_id?: string | null
           note?: string | null
           paid_at?: string
           payment_method?: string | null
@@ -622,7 +889,12 @@ export type Database = {
           created_by?: string | null
           currency?: string
           employee_id?: string
+          gross_amount?: number | null
           id?: string
+          imss_deduction?: number
+          infonavit_deduction?: number
+          loan_deduction?: number
+          loan_id?: string | null
           note?: string | null
           paid_at?: string
           payment_method?: string | null
@@ -636,6 +908,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_payments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "employee_loans"
             referencedColumns: ["id"]
           },
         ]
@@ -832,6 +1111,50 @@ export type Database = {
         }
         Relationships: []
       }
+      vacation_records: {
+        Row: {
+          created_at: string
+          days: number
+          employee_id: string
+          end_date: string
+          id: string
+          note: string | null
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          days: number
+          employee_id: string
+          end_date: string
+          id?: string
+          note?: string | null
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          days?: number
+          employee_id?: string
+          end_date?: string
+          id?: string
+          note?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vacation_records_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -845,11 +1168,12 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      vacation_days_by_seniority: { Args: { hire: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "seller"
       expense_type: "fixed" | "variable" | "unexpected"
-      payroll_frequency: "weekly" | "monthly"
+      payroll_frequency: "weekly" | "monthly" | "daily" | "biweekly"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -979,7 +1303,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "seller"],
       expense_type: ["fixed", "variable", "unexpected"],
-      payroll_frequency: ["weekly", "monthly"],
+      payroll_frequency: ["weekly", "monthly", "daily", "biweekly"],
     },
   },
 } as const
