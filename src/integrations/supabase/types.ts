@@ -862,9 +862,12 @@ export type Database = {
       payroll_payments: {
         Row: {
           amount: number
+          bonus_amount: number
           created_at: string
           created_by: string | null
           currency: string
+          daily_rate: number | null
+          days_worked: number | null
           employee_id: string
           gross_amount: number | null
           id: string
@@ -877,13 +880,18 @@ export type Database = {
           payment_method: string | null
           period_end: string
           period_start: string
+          receipt_number: string | null
+          severance_amount: number
           updated_at: string
         }
         Insert: {
           amount: number
+          bonus_amount?: number
           created_at?: string
           created_by?: string | null
           currency?: string
+          daily_rate?: number | null
+          days_worked?: number | null
           employee_id: string
           gross_amount?: number | null
           id?: string
@@ -896,13 +904,18 @@ export type Database = {
           payment_method?: string | null
           period_end: string
           period_start: string
+          receipt_number?: string | null
+          severance_amount?: number
           updated_at?: string
         }
         Update: {
           amount?: number
+          bonus_amount?: number
           created_at?: string
           created_by?: string | null
           currency?: string
+          daily_rate?: number | null
+          days_worked?: number | null
           employee_id?: string
           gross_amount?: number | null
           id?: string
@@ -915,6 +928,8 @@ export type Database = {
           payment_method?: string | null
           period_end?: string
           period_start?: string
+          receipt_number?: string | null
+          severance_amount?: number
           updated_at?: string
         }
         Relationships: [

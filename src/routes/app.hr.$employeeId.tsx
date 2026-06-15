@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ChevronLeft, Save, Plus, Plane, CircleDollarSign, FileText, Upload, Download, Trash2, Wallet } from "lucide-react";
+import { Calculator, ChevronLeft, Save, Plus, Plane, CircleDollarSign, FileText, Upload, Download, Trash2, Wallet, Printer } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 
 type EmployeeKind = "regular" | "shift_cover";
@@ -49,6 +49,7 @@ export const Route = createFileRoute("/app/hr/$employeeId")({
 function EmployeeDetail() {
   const { employeeId } = Route.useParams();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: emp } = useQuery({
     queryKey: ["hr-emp", employeeId],
@@ -62,19 +63,33 @@ function EmployeeDetail() {
   if (!emp) return <div className="p-6 text-center text-sm text-muted-foreground">Cargando…</div>;
   const shiftCover = isShiftCover(emp.position);
 
+  const deleteEmployee = async () => {
+    if (!confirm(`¿Borrar a ${emp.name}? Esta acción elimina su expediente de RRHH.`)) return;
+    const { error } = await supabase.from("employees").delete().eq("id", emp.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Empleada borrada");
+    qc.invalidateQueries({ queryKey: ["hr-employees"] });
+    navigate({ to: "/app/hr", replace: true });
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
       <Link to="/app/hr" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeft className="h-4 w-4" /> RRHH
       </Link>
-      <header>
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-2xl font-bold">{emp.name}</h1>
-          {shiftCover && <Badge variant="outline">Cubre turnos</Badge>}
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold">{emp.name}</h1>
+            {shiftCover && <Badge variant="outline">Cubre turnos</Badge>}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {emp.position || "Sin puesto"}{shiftCover ? " · 2 días/semana" : ""} {emp.is_active ? "" : "· Baja"}
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {emp.position || "Sin puesto"}{shiftCover ? " · 2 días/semana" : ""} {emp.is_active ? "" : "· Baja"}
-        </p>
+        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={deleteEmployee}>
+          <Trash2 className="h-4 w-4 mr-1" /> Borrar
+        </Button>
       </header>
 
       <Tabs defaultValue="general">
@@ -89,7 +104,7 @@ function EmployeeDetail() {
 
         <TabsContent value="general"><GeneralTab emp={emp} onSaved={() => qc.invalidateQueries({ queryKey: ["hr-emp", employeeId] })} /></TabsContent>
         <TabsContent value="contract"><ContractTab employeeId={employeeId} isShiftCover={shiftCover} /></TabsContent>
-        <TabsContent value="payroll"><PayrollTab employeeId={employeeId} /></TabsContent>
+        <TabsContent value="payroll"><PayrollTab employeeId={employeeId} emp={emp} /></TabsContent>
         {!shiftCover && <TabsContent value="vacations"><VacationsTab employeeId={employeeId} hireDate={emp.hire_date} /></TabsContent>}
         <TabsContent value="loans"><LoansTab employeeId={employeeId} /></TabsContent>
         <TabsContent value="docs"><DocsTab employeeId={employeeId} /></TabsContent>
@@ -308,12 +323,20 @@ function ContractTab({ employeeId, isShiftCover }: { employeeId: string; isShift
 }
 
 /* =================== PAYROLL =================== */
-function PayrollTab({ employeeId }: { employeeId: string }) {
+function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [receipt, setReceipt] = useState<any | null>(null);
   const today = new Date().toISOString().slice(0, 10);
+  const defaultDailyRate = String(
+    emp.frequency === "daily" ? Number(emp.salary || 0)
+    : emp.frequency === "weekly" ? Math.round((Number(emp.salary || 0) / 7) * 100) / 100
+    : emp.frequency === "biweekly" ? Math.round((Number(emp.salary || 0) / 15) * 100) / 100
+    : Math.round((Number(emp.salary || 0) / 30) * 100) / 100,
+  );
   const [f, setF] = useState({
     period_start: today, period_end: today, paid_at: today,
+    days_worked: "", daily_rate: defaultDailyRate, bonus_amount: "", severance_amount: "",
     gross_amount: "", imss_deduction: "", infonavit_deduction: "", loan_deduction: "",
     loan_id: "", payment_method: "efectivo", note: "",
   });
@@ -346,24 +369,51 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
     setF((prev) => ({ ...prev, loan_id: id, loan_deduction: loan?.mode === "auto" && loan.installment_amount ? String(Math.min(Number(loan.installment_amount), Number(loan.balance))) : prev.loan_deduction }));
   };
 
+  const salaryBase = (Number(f.daily_rate) || 0) * (Number(f.days_worked) || 0);
+  const bonus = Number(f.bonus_amount) || 0;
+  const severance = Number(f.severance_amount) || 0;
+  const grossPreview = salaryBase + bonus + severance;
+  const netPreview = Math.max(0, grossPreview - (Number(f.imss_deduction) || 0) - (Number(f.infonavit_deduction) || 0) - (Number(f.loan_deduction) || 0));
+
   const save = async () => {
-    const gross = Number(f.gross_amount) || 0;
+    const gross = grossPreview || Number(f.gross_amount) || 0;
     const imss = Number(f.imss_deduction) || 0;
     const inf = Number(f.infonavit_deduction) || 0;
     const loan = Number(f.loan_deduction) || 0;
     const net = Math.max(0, gross - imss - inf - loan);
-    const { error } = await supabase.from("payroll_payments").insert({
+    const receiptNumber = `NOM-${new Date(f.paid_at).getFullYear()}-${Date.now().toString().slice(-6)}`;
+    const { data, error } = await supabase.from("payroll_payments").insert({
       employee_id: employeeId,
       period_start: f.period_start, period_end: f.period_end, paid_at: f.paid_at,
+      days_worked: Number(f.days_worked) || null,
+      daily_rate: Number(f.daily_rate) || null,
+      bonus_amount: bonus,
+      severance_amount: severance,
       gross_amount: gross, imss_deduction: imss, infonavit_deduction: inf, loan_deduction: loan,
       loan_id: f.loan_id || null,
       amount: net, payment_method: f.payment_method, note: f.note || null,
-    });
+      receipt_number: receiptNumber,
+    }).select("*").single();
     if (error) { toast.error(error.message); return; }
     toast.success("Pago registrado");
     setOpen(false);
+    setReceipt(data);
+    setF({
+      period_start: today, period_end: today, paid_at: today,
+      days_worked: "", daily_rate: defaultDailyRate, bonus_amount: "", severance_amount: "",
+      gross_amount: "", imss_deduction: "", infonavit_deduction: "", loan_deduction: "",
+      loan_id: "", payment_method: "efectivo", note: "",
+    });
     qc.invalidateQueries({ queryKey: ["hr-payroll", employeeId] });
     qc.invalidateQueries({ queryKey: ["hr-loans-active", employeeId] });
+  };
+
+  const deletePayment = async (id: string) => {
+    if (!confirm("¿Borrar este pago de nómina?")) return;
+    const { error } = await supabase.from("payroll_payments").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pago borrado");
+    qc.invalidateQueries({ queryKey: ["hr-payroll", employeeId] });
   };
 
   return (
@@ -376,12 +426,16 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
         <Card className="p-6 text-center text-sm text-muted-foreground">Sin pagos</Card>
       ) : payments.map((p: any) => (
         <Card key={p.id} className="p-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div>
               <p className="font-medium">{formatMoney(Number(p.amount))}</p>
               <p className="text-xs text-muted-foreground">{formatDateShort(p.paid_at)} · {formatDateShort(p.period_start)} – {formatDateShort(p.period_end)}</p>
             </div>
-            {p.payment_method && <Badge variant="outline" className="text-[10px] capitalize">{p.payment_method}</Badge>}
+            <div className="flex items-center gap-1 shrink-0">
+              {p.payment_method && <Badge variant="outline" className="text-[10px] capitalize">{p.payment_method}</Badge>}
+              <Button size="sm" variant="outline" onClick={() => setReceipt(p)}><Printer className="h-3.5 w-3.5 mr-1" /> Recibo</Button>
+              <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deletePayment(p.id)}><Trash2 className="h-4 w-4" /></Button>
+            </div>
           </div>
           {(Number(p.imss_deduction) || Number(p.infonavit_deduction) || Number(p.loan_deduction)) > 0 && (
             <div className="flex gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
@@ -389,6 +443,14 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
               {Number(p.imss_deduction) > 0 && <span>IMSS: -{formatMoney(Number(p.imss_deduction))}</span>}
               {Number(p.infonavit_deduction) > 0 && <span>Infonavit: -{formatMoney(Number(p.infonavit_deduction))}</span>}
               {Number(p.loan_deduction) > 0 && <span>Préstamo: -{formatMoney(Number(p.loan_deduction))}</span>}
+            </div>
+          )}
+          {(Number(p.days_worked) || Number(p.daily_rate) || Number(p.bonus_amount) || Number(p.severance_amount)) > 0 && (
+            <div className="flex gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+              {Number(p.days_worked) > 0 && <span>Días: {Number(p.days_worked)}</span>}
+              {Number(p.daily_rate) > 0 && <span>Por día: {formatMoney(Number(p.daily_rate))}</span>}
+              {Number(p.bonus_amount) > 0 && <span>Bono: {formatMoney(Number(p.bonus_amount))}</span>}
+              {Number(p.severance_amount) > 0 && <span>Finiquito: {formatMoney(Number(p.severance_amount))}</span>}
             </div>
           )}
         </Card>
@@ -403,7 +465,20 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
               <div><Label>Periodo fin</Label><Input type="date" value={f.period_end} onChange={(e) => setF({ ...f, period_end: e.target.value })} /></div>
             </div>
             <div><Label>Fecha de pago</Label><Input type="date" value={f.paid_at} onChange={(e) => setF({ ...f, paid_at: e.target.value })} /></div>
-            <div><Label>Bruto</Label><Input type="number" step="0.01" value={f.gross_amount} onChange={(e) => setF({ ...f, gross_amount: e.target.value })} /></div>
+            <Card className="p-3 bg-muted/40 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium"><Calculator className="h-4 w-4" /> Cálculo de nómina y finiquito</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label>Días laborados</Label><Input type="number" step="0.5" value={f.days_worked} onChange={(e) => setF({ ...f, days_worked: e.target.value })} /></div>
+                <div><Label>Sueldo por día</Label><Input type="number" step="0.01" value={f.daily_rate} onChange={(e) => setF({ ...f, daily_rate: e.target.value })} /></div>
+                <div><Label>Bono</Label><Input type="number" step="0.01" value={f.bonus_amount} onChange={(e) => setF({ ...f, bonus_amount: e.target.value })} /></div>
+                <div><Label>Finiquito mensual</Label><Input type="number" step="0.01" value={f.severance_amount} onChange={(e) => setF({ ...f, severance_amount: e.target.value })} /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div><span className="text-muted-foreground">Sueldo</span><p className="font-semibold">{formatMoney(salaryBase)}</p></div>
+                <div><span className="text-muted-foreground">Bruto</span><p className="font-semibold">{formatMoney(grossPreview)}</p></div>
+                <div><span className="text-muted-foreground">Neto</span><p className="font-semibold text-primary">{formatMoney(netPreview)}</p></div>
+              </div>
+            </Card>
             <div className="grid grid-cols-2 gap-2">
               <div><Label>IMSS</Label><Input type="number" step="0.01" value={f.imss_deduction} onChange={(e) => setF({ ...f, imss_deduction: e.target.value })} /></div>
               <div><Label>Infonavit</Label><Input type="number" step="0.01" value={f.infonavit_deduction} onChange={(e) => setF({ ...f, infonavit_deduction: e.target.value })} /></div>
@@ -435,13 +510,76 @@ function PayrollTab({ employeeId }: { employeeId: string }) {
             </div>
             <div><Label>Nota</Label><Textarea rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></div>
             <Card className="p-2 bg-muted/40 text-sm">
-              <div className="flex justify-between"><span>Neto a pagar</span><span className="font-bold">{formatMoney(Math.max(0, (Number(f.gross_amount) || 0) - (Number(f.imss_deduction) || 0) - (Number(f.infonavit_deduction) || 0) - (Number(f.loan_deduction) || 0)))}</span></div>
+              <div className="flex justify-between"><span>Neto a pagar</span><span className="font-bold">{formatMoney(netPreview)}</span></div>
             </Card>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save}><Wallet className="h-4 w-4 mr-1" />Registrar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PayrollReceiptDialog open={!!receipt} payment={receipt} emp={emp} onClose={() => setReceipt(null)} />
     </div>
+  );
+}
+
+function PayrollReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment: any; emp: any; onClose: () => void }) {
+  if (!payment) return null;
+  const salaryBase = (Number(payment.daily_rate) || 0) * (Number(payment.days_worked) || 0);
+  const deductions = (Number(payment.imss_deduction) || 0) + (Number(payment.infonavit_deduction) || 0) + (Number(payment.loan_deduction) || 0);
+  const print = () => window.print();
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader><DialogTitle>Recibo de nómina</DialogTitle></DialogHeader>
+        <div className="border rounded-lg overflow-hidden bg-white text-black">
+          <div className="grid grid-cols-[2fr_1fr] border-b">
+            <div className="p-4 text-center font-mono text-xl font-semibold uppercase">{emp.name}</div>
+            <div className="p-4 text-center border-l font-semibold">{formatDateShort(payment.paid_at)}</div>
+          </div>
+          <div className="grid grid-cols-[1fr_1fr_1fr_2fr] border-b text-center">
+            <div className="border-r p-3">
+              <p className="text-xs uppercase">Sueldo</p>
+              <p className="font-semibold">{formatMoney(salaryBase)}</p>
+            </div>
+            <div className="border-r p-3">
+              <p className="text-xs uppercase">Por día</p>
+              <p className="font-semibold">{formatMoney(Number(payment.daily_rate) || 0)}</p>
+            </div>
+            <div className="border-r p-3">
+              <p className="text-xs uppercase">Días</p>
+              <p className="font-semibold">{Number(payment.days_worked) || 0}</p>
+            </div>
+            <div className="p-3">
+              <p className="text-xs uppercase">Periodo</p>
+              <p className="font-semibold">{formatDateShort(payment.period_start)} – {formatDateShort(payment.period_end)}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_2fr_2fr] min-h-48">
+            <div className="border-r">
+              <div className="border-b p-3 text-center font-medium">Bono</div>
+              <div className="border-b p-3 text-center font-medium">Finiquito mensual</div>
+              <div className="p-3 text-center font-medium">Deducciones</div>
+            </div>
+            <div className="border-r">
+              <div className="border-b p-3 text-right font-semibold">{formatMoney(Number(payment.bonus_amount) || 0)}</div>
+              <div className="border-b p-3 text-right font-semibold">{formatMoney(Number(payment.severance_amount) || 0)}</div>
+              <div className="p-3 text-right font-semibold">{formatMoney(deductions)}</div>
+            </div>
+            <div className="flex flex-col items-center justify-center p-5">
+              <p className="text-sm uppercase">Total</p>
+              <p className="text-4xl font-bold">{formatMoney(Number(payment.amount) || 0)}</p>
+              {payment.receipt_number && <p className="mt-3 text-xs text-muted-foreground">{payment.receipt_number}</p>}
+            </div>
+          </div>
+          {payment.note && <div className="border-t p-3 text-sm">Nota: {payment.note}</div>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+          <Button onClick={print}><Printer className="h-4 w-4 mr-1" /> Imprimir</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
