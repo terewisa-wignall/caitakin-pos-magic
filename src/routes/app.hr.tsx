@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Search, ChevronRight, Briefcase, Plane, CircleDollarSign } from "lucide-react";
+import { UserPlus, Search, ChevronRight, Briefcase, Plane, CircleDollarSign, Pencil, Trash2 } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 
 export const Route = createFileRoute("/app/hr")({
@@ -36,10 +36,13 @@ function isShiftCover(position?: string | null) {
 
 function HRPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
+  const [editEmp, setEditEmp] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: "", is_active: true });
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["hr-employees"],
@@ -120,6 +123,53 @@ function HRPage() {
     qc.invalidateQueries({ queryKey: ["hr-employees"] });
   };
 
+  const openEdit = (employee: any) => {
+    const shiftCover = isShiftCover(employee.position);
+    setEditEmp(employee);
+    setEditForm({
+      name: employee.name ?? "",
+      kind: shiftCover ? "shift_cover" : "regular",
+      position: shiftCover ? SHIFT_COVER_POSITION : employee.position ?? "",
+      salary: String(employee.salary ?? ""),
+      frequency: shiftCover ? "weekly" : employee.frequency ?? "monthly",
+      hire_date: employee.hire_date ?? "",
+      is_active: Boolean(employee.is_active),
+    });
+  };
+
+  const updateEmployee = async () => {
+    if (!editEmp) return;
+    if (!editForm.name.trim()) { toast.error("Nombre requerido"); return; }
+    const shiftCover = editForm.kind === "shift_cover";
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        name: editForm.name.trim(),
+        position: shiftCover ? SHIFT_COVER_POSITION : editForm.position.trim() || null,
+        salary: Number(editForm.salary) || 0,
+        frequency: (shiftCover ? "weekly" : editForm.frequency) as any,
+        hire_date: editForm.hire_date || null,
+        is_active: editForm.is_active,
+      })
+      .eq("id", editEmp.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Empleada actualizada");
+    setEditEmp(null);
+    qc.invalidateQueries({ queryKey: ["hr-employees"] });
+  };
+
+  const deleteEmployee = async (employee: any) => {
+    if (!confirm(`¿Borrar a ${employee.name}? Esta acción no se puede deshacer.`)) return;
+    const { error } = await supabase.from("employees").delete().eq("id", employee.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Empleada borrada");
+    qc.invalidateQueries({ queryKey: ["hr-employees"] });
+  };
+
+  const openEmployee = (employeeId: string) => {
+    navigate({ to: "/app/hr/$employeeId", params: { employeeId } });
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
       <header className="flex items-start justify-between gap-3">
@@ -166,8 +216,19 @@ function HRPage() {
             const onVac = vacSet.has(e.id);
             const shiftCover = isShiftCover(e.position);
             return (
-              <Link key={e.id} to="/app/hr/$employeeId" params={{ employeeId: e.id }}>
-                <Card className="p-3 flex items-center gap-3 hover:bg-accent/30 active:bg-accent/50 transition">
+              <Card
+                key={e.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openEmployee(e.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openEmployee(e.id);
+                  }
+                }}
+                className="p-3 flex items-center gap-3 hover:bg-accent/30 active:bg-accent/50 transition cursor-pointer"
+              >
                   <div className="h-11 w-11 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center shrink-0">{initials}</div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -181,9 +242,36 @@ function HRPage() {
                       {e.position || "Sin puesto"} · {formatMoney(Number(e.salary))} {labelFreq(e.frequency)}{shiftCover ? " · 2 días/semana" : ""}
                     </p>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex items-center gap-1 shrink-0" onClick={(event) => event.stopPropagation()}>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      aria-label={`Editar ${e.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEdit(e);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      aria-label={`Borrar ${e.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteEmployee(e);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
                 </Card>
-              </Link>
             );
           })}
         </div>
@@ -230,6 +318,55 @@ function HRPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={create}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editEmp)} onOpenChange={(nextOpen) => !nextOpen && setEditEmp(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar empleada</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nombre</Label><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></div>
+            <div>
+              <Label>Tipo</Label>
+              <Select value={editForm.kind} onValueChange={(v) => setEditForm({ ...editForm, kind: v as EmployeeKind, position: v === "shift_cover" ? SHIFT_COVER_POSITION : "", frequency: v === "shift_cover" ? "weekly" : editForm.frequency })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="shift_cover">Cubre turnos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Puesto</Label><Input value={editForm.position} onChange={(e) => setEditForm({ ...editForm, position: e.target.value })} placeholder="Vendedora" disabled={editForm.kind === "shift_cover"} /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Sueldo</Label><Input type="number" step="0.01" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} /></div>
+              <div>
+                <Label>Frecuencia</Label>
+                <Select value={editForm.frequency} onValueChange={(v) => setEditForm({ ...editForm, frequency: v })} disabled={editForm.kind === "shift_cover"}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Diario</SelectItem>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="biweekly">Quincenal</SelectItem>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {editForm.kind === "shift_cover" && (
+              <Card className="p-3 bg-muted/40 text-sm text-muted-foreground">
+                Cubre turnos trabaja 2 días por semana y no maneja vacaciones.
+              </Card>
+            )}
+            <div><Label>Fecha de ingreso</Label><Input type="date" value={editForm.hire_date} onChange={(e) => setEditForm({ ...editForm, hire_date: e.target.value })} /></div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })} />
+              Activa
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditEmp(null)}>Cancelar</Button>
+            <Button onClick={updateEmployee}>Guardar cambios</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
