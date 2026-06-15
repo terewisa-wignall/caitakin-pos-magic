@@ -1,66 +1,40 @@
-## Módulo "Finanzas" (solo admin)
+## Objetivo
 
-Nueva sección que vive en paralelo a Caja. Caja sigue siendo el operativo del día. Finanzas es la vista del negocio: consolida automáticamente las ventas y movimientos de caja, y suma los registros nuevos (gastos fijos, variables, imprevistos, nómina, comisiones pagadas).
+Cuando se sube una foto de producto (alta de producto o edición), procesarla automáticamente para quitar el fondo y dejar el producto sobre fondo blanco limpio, antes de subirla al storage.
 
-### Navegación
-Nuevo ítem "Finanzas" en el menú lateral (solo visible para admin), con sub-secciones internas por tabs:
-- Resumen · Ingresos · Gastos · Nómina · Comisiones · Cierres
+## Cómo va a funcionar
 
-Mismo lenguaje visual actual (cards, íconos lucide, paleta intacta, mobile-first).
+1. El usuario selecciona la foto como hoy (botón actual en Inventario / detalle de producto).
+2. Antes de subir, la imagen pasa por un paso de "limpieza":
+   - Se recorta el fondo automáticamente (queda solo el producto).
+   - Se pega el producto sobre un lienzo blanco cuadrado del mismo tamaño.
+   - Se exporta como JPG comprimido.
+3. La foto resultante (producto + fondo blanco) es la que se guarda en el bucket `product-photos` y se muestra en la app.
+4. Indicador visual mientras procesa ("Quitando fondo…") para que el admin sepa que tarda unos segundos la primera vez.
 
----
+## Detalles técnicos
 
-### 1. Resumen (pantalla principal)
-Cards arriba con filtro de mes (selector simple "Junio 2026 ▾"):
-- Ingresos del mes (ventas + ingresos de caja)
-- Gastos del mes (fijos + variables + imprevistos)
-- Nómina pagada
-- Comisiones pagadas
-- **Utilidad del mes** (ingresos − gastos − nómina − comisiones), verde/rojo
-- Mini gráfica de barras: utilidad mes a mes del año en curso
+- Librería: `@imgly/background-removal` (corre 100% en el navegador con WASM, sin API key ni costo, sin enviar la foto a terceros). Primera ejecución descarga el modelo (~40 MB) y queda cacheado.
+- Nuevo helper `src/lib/remove-bg.ts` con una función `flattenOnWhite(file: File): Promise<File>` que:
+  - Llama a `removeBackground(file)` → obtiene PNG transparente.
+  - Dibuja en un `<canvas>` con `fillStyle = "#fff"` de fondo.
+  - Exporta a JPG (calidad 0.9) y devuelve un nuevo `File`.
+- Cambios en los dos puntos de subida actuales:
+  - `src/routes/app.inventory.tsx` (modal "Nuevo producto"): correr `flattenOnWhite` antes del `supabase.storage.upload`.
+  - `src/routes/app.inventory.$productId.tsx` (editar producto): igual.
+- Estado `processing` para deshabilitar el botón Guardar y mostrar texto "Quitando fondo…".
+- Fallback: si la librería falla (imagen muy rara, sin memoria, etc.), se sube la foto original y se muestra un toast informativo, sin bloquear al usuario.
+- Tamaño máximo de imagen de entrada: si pasa de ~10 MB se rechaza con toast para no tronar la pestaña.
 
-### 2. Ingresos
-Lista consolidada (solo lectura, viene de ventas y de `cash_movements` tipo income). Filtros: mes, origen (venta / caja / otro). Permite registrar "Otro ingreso" manual (renta cobrada, devolución de proveedor, etc.).
+## Lo que NO cambia
 
-### 3. Gastos
-Una sola pantalla con chips para filtrar por tipo: **Fijo · Variable · Imprevisto**. Botón "+ Nuevo gasto" abre formulario corto:
-- Concepto, monto, moneda, tipo (fijo/variable/imprevisto), categoría libre (renta, luz, papelería…), fecha, método de pago, nota, comprobante (foto opcional al bucket existente).
-- Los fijos tienen toggle "Recurrente mensual" → se sugieren automáticamente cada mes en el resumen ("Pendiente: Renta $X").
+- Bucket, políticas, esquema de BD, flujo de variantes, ni el resto del inventario.
+- Las fotos ya subidas se quedan como están (no se reprocesan en lote).
+- No se agregan claves ni servicios externos.
 
-### 4. Nómina
-Dos partes:
-- **Empleados**: alta sencilla (nombre, puesto, sueldo, periodicidad: semanal o mensual, activo). Independiente de los usuarios del sistema (no todos los empleados usan la app).
-- **Pagos de nómina**: botón "Registrar pago" → elige empleado, periodo (semana del…/mes de…), monto (pre-llenado con su sueldo, editable), fecha de pago, nota. Queda como gasto en el mes correspondiente.
+## Archivos a tocar
 
-### 5. Comisiones pagadas
-Lista las comisiones existentes (tabla `commissions`) con estado pendiente/pagada. Botón "Marcar como pagada" en lote para el corte del **5** y **20** de cada mes (selector rápido "Corte 5 jun" / "Corte 20 jun" que filtra las pendientes hasta esa fecha). Al pagar se guarda fecha y método.
-
-### 6. Cierres mensuales y vista anual
-- Botón "Cerrar mes" genera snapshot del mes (totales por categoría + utilidad). No bloquea edición, no traspasa saldo: cada mes queda independiente.
-- Pantalla "Año 2026" con tabla de 12 meses + gráfica: ingresos, gastos, utilidad y un total anual al pie.
-- Cada mes cerrado se puede exportar/imprimir como reporte simple.
-
----
-
-### Cambios técnicos (resumen)
-
-**Base de datos (nuevas tablas, todas RLS solo admin lee/escribe, vendedores no ven nada):**
-- `expenses` (concepto, monto, moneda, tipo enum fijo/variable/imprevisto, categoría, fecha, método, nota, comprobante_url, recurrente, created_by)
-- `employees` (nombre, puesto, sueldo, periodicidad enum weekly/monthly, activo)
-- `payroll_payments` (empleado_id, periodo_inicio, periodo_fin, monto, fecha_pago, nota)
-- `other_incomes` (concepto, monto, moneda, fecha, nota) — ingresos manuales no-venta
-- `commission_payments` (commission_ids[], monto_total, fecha, método, corte_label) + columna `paid_at` en `commissions`
-- `monthly_closings` (año, mes, snapshot jsonb, closed_at, closed_by)
-
-**Rutas nuevas:**
-- `src/routes/app.finance.tsx` (layout con tabs)
-- `app.finance.index.tsx` (Resumen), `app.finance.income.tsx`, `app.finance.expenses.tsx`, `app.finance.payroll.tsx`, `app.finance.commissions.tsx`, `app.finance.closings.tsx`
-
-**Componentes:**
-- `month-picker.tsx`, `expense-form.tsx`, `employee-form.tsx`, `payroll-form.tsx`, `finance-summary-cards.tsx`
-
-**Editado:** `app-shell.tsx` (ítem de menú admin), `app.commissions.tsx` (link a Finanzas).
-
-Sin cambios a Caja, Inventario ni Ventas. Paleta y logo intactos.
-
-¿Apruebas para empezar por la migración de base de datos?
+- nuevo: `src/lib/remove-bg.ts`
+- editado: `src/routes/app.inventory.tsx`
+- editado: `src/routes/app.inventory.$productId.tsx`
+- editado: `package.json` (agregar `@imgly/background-removal`)

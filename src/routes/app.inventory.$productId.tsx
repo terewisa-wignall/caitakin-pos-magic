@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
 import { SizeSetPicker } from "@/components/size-set-picker";
+import { flattenOnWhite } from "@/lib/remove-bg";
 
 export const Route = createFileRoute("/app/inventory/$productId")({
   component: ProductDetail,
@@ -155,10 +156,21 @@ function ProductDetail() {
     try {
       let photo_url = product.data?.photo_url ?? null;
       if (uploadFile) {
-        const path = `${crypto.randomUUID()}-${uploadFile.name}`;
+        let toUpload: File = uploadFile;
+        try {
+          toast.loading("Quitando fondo…", { id: "bg-remove" });
+          toUpload = await flattenOnWhite(uploadFile);
+          toast.success("Fondo limpio", { id: "bg-remove" });
+        } catch (err) {
+          toast.error("No se pudo quitar el fondo, se sube la foto original", {
+            id: "bg-remove",
+          });
+          console.error(err);
+        }
+        const path = `${crypto.randomUUID()}-${toUpload.name}`;
         const { error: uploadError } = await supabase.storage
           .from("product-photos")
-          .upload(path, uploadFile);
+          .upload(path, toUpload);
         if (uploadError) throw uploadError;
         const { data: signed } = await supabase.storage
           .from("product-photos")
