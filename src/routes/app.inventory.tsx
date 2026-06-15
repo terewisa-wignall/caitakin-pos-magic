@@ -20,7 +20,6 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { formatMoney } from "@/lib/format";
-import { flattenOnWhite } from "@/lib/remove-bg";
 
 const QUICK_SIZE_SETS = [
   { id: "unitalla", label: "Unitalla", sizes: ["Unitalla"] },
@@ -268,21 +267,10 @@ function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => 
     try {
       let photo_url: string | null = null;
       if (file) {
-        let toUpload: File = file;
-        try {
-          toast.loading("Quitando fondo…", { id: "bg-remove" });
-          toUpload = await flattenOnWhite(file);
-          toast.success("Fondo limpio", { id: "bg-remove" });
-        } catch (err) {
-          toast.error("No se pudo quitar el fondo, se sube la foto original", {
-            id: "bg-remove",
-          });
-          console.error(err);
-        }
-        const path = `${crypto.randomUUID()}-${toUpload.name}`;
+        const path = `${crypto.randomUUID()}-${file.name}`;
         const { error: upErr } = await supabase.storage
           .from("product-photos")
-          .upload(path, toUpload);
+          .upload(path, file);
         if (upErr) throw upErr;
         const { data: signed } = await supabase.storage
           .from("product-photos")

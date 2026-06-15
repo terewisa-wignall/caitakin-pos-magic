@@ -26,13 +26,20 @@ export const Route = createFileRoute("/app/hr")({
 });
 
 type Filter = "all" | "active" | "inactive" | "with_loan" | "on_vacation";
+type EmployeeKind = "regular" | "shift_cover";
+
+const SHIFT_COVER_POSITION = "Cubre turnos";
+
+function isShiftCover(position?: string | null) {
+  return (position ?? "").trim().toLowerCase() === SHIFT_COVER_POSITION.toLowerCase();
+}
 
 function HRPage() {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["hr-employees"],
@@ -97,18 +104,19 @@ function HRPage() {
 
   const create = async () => {
     if (!form.name.trim()) { toast.error("Nombre requerido"); return; }
+    const shiftCover = form.kind === "shift_cover";
     const { error } = await supabase.from("employees").insert({
       name: form.name.trim(),
-      position: form.position.trim() || null,
+      position: shiftCover ? SHIFT_COVER_POSITION : form.position.trim() || null,
       salary: Number(form.salary) || 0,
-      frequency: form.frequency as any,
+      frequency: (shiftCover ? "weekly" : form.frequency) as any,
       hire_date: form.hire_date || null,
       is_active: true,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("Empleada agregada");
     setOpen(false);
-    setForm({ name: "", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
+    setForm({ name: "", kind: "regular", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
     qc.invalidateQueries({ queryKey: ["hr-employees"] });
   };
 
@@ -156,6 +164,7 @@ function HRPage() {
             const initials = e.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
             const loanBal = loanMap.get(e.id);
             const onVac = vacSet.has(e.id);
+            const shiftCover = isShiftCover(e.position);
             return (
               <Link key={e.id} to="/app/hr/$employeeId" params={{ employeeId: e.id }}>
                 <Card className="p-3 flex items-center gap-3 hover:bg-accent/30 active:bg-accent/50 transition">
@@ -164,10 +173,13 @@ function HRPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{e.name}</p>
                       {!e.is_active && <Badge variant="secondary" className="text-[10px]">Baja</Badge>}
+                      {shiftCover && <Badge variant="outline" className="text-[10px]">Cubre turnos</Badge>}
                       {onVac && <Badge className="bg-blue-500 text-[10px]">Vacaciones</Badge>}
                       {loanBal && <Badge variant="outline" className="text-[10px]">Préstamo {formatMoney(loanBal)}</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{e.position || "Sin puesto"} · {formatMoney(Number(e.salary))} {labelFreq(e.frequency)}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {e.position || "Sin puesto"} · {formatMoney(Number(e.salary))} {labelFreq(e.frequency)}{shiftCover ? " · 2 días/semana" : ""}
+                    </p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                 </Card>
@@ -182,12 +194,22 @@ function HRPage() {
           <DialogHeader><DialogTitle>Nueva empleada</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div><Label>Puesto</Label><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="Vendedora" /></div>
+            <div>
+              <Label>Tipo</Label>
+              <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as EmployeeKind, position: v === "shift_cover" ? SHIFT_COVER_POSITION : "", frequency: v === "shift_cover" ? "weekly" : form.frequency })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="shift_cover">Cubre turnos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Puesto</Label><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="Vendedora" disabled={form.kind === "shift_cover"} /></div>
             <div className="grid grid-cols-2 gap-2">
               <div><Label>Sueldo</Label><Input type="number" step="0.01" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></div>
               <div>
                 <Label>Frecuencia</Label>
-                <Select value={form.frequency} onValueChange={(v) => setForm({ ...form, frequency: v })}>
+                <Select value={form.frequency} onValueChange={(v) => setForm({ ...form, frequency: v })} disabled={form.kind === "shift_cover"}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="daily">Diario</SelectItem>
@@ -198,6 +220,11 @@ function HRPage() {
                 </Select>
               </div>
             </div>
+            {form.kind === "shift_cover" && (
+              <Card className="p-3 bg-muted/40 text-sm text-muted-foreground">
+                Cubre turnos trabaja 2 días por semana y no maneja vacaciones.
+              </Card>
+            )}
             <div><Label>Fecha de ingreso</Label><Input type="date" value={form.hire_date} onChange={(e) => setForm({ ...form, hire_date: e.target.value })} /></div>
           </div>
           <DialogFooter>

@@ -16,6 +16,14 @@ import { toast } from "sonner";
 import { ChevronLeft, Save, Plus, Plane, CircleDollarSign, FileText, Upload, Download, Trash2, Wallet } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 
+type EmployeeKind = "regular" | "shift_cover";
+
+const SHIFT_COVER_POSITION = "Cubre turnos";
+
+function isShiftCover(position?: string | null) {
+  return (position ?? "").trim().toLowerCase() === SHIFT_COVER_POSITION.toLowerCase();
+}
+
 export const Route = createFileRoute("/app/hr/$employeeId")({
   ssr: false,
   head: () => ({ meta: [{ title: "Expediente · CAsitakin" }] }),
@@ -52,6 +60,7 @@ function EmployeeDetail() {
   });
 
   if (!emp) return <div className="p-6 text-center text-sm text-muted-foreground">Cargando…</div>;
+  const shiftCover = isShiftCover(emp.position);
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
@@ -59,8 +68,13 @@ function EmployeeDetail() {
         <ChevronLeft className="h-4 w-4" /> RRHH
       </Link>
       <header>
-        <h1 className="text-2xl font-bold">{emp.name}</h1>
-        <p className="text-sm text-muted-foreground">{emp.position || "Sin puesto"} {emp.is_active ? "" : "· Baja"}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-2xl font-bold">{emp.name}</h1>
+          {shiftCover && <Badge variant="outline">Cubre turnos</Badge>}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {emp.position || "Sin puesto"}{shiftCover ? " · 2 días/semana" : ""} {emp.is_active ? "" : "· Baja"}
+        </p>
       </header>
 
       <Tabs defaultValue="general">
@@ -68,15 +82,15 @@ function EmployeeDetail() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="contract">Contrato</TabsTrigger>
           <TabsTrigger value="payroll">Nómina</TabsTrigger>
-          <TabsTrigger value="vacations">Vacaciones</TabsTrigger>
+          {!shiftCover && <TabsTrigger value="vacations">Vacaciones</TabsTrigger>}
           <TabsTrigger value="loans">Préstamos</TabsTrigger>
           <TabsTrigger value="docs">Documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general"><GeneralTab emp={emp} onSaved={() => qc.invalidateQueries({ queryKey: ["hr-emp", employeeId] })} /></TabsContent>
-        <TabsContent value="contract"><ContractTab employeeId={employeeId} /></TabsContent>
+        <TabsContent value="contract"><ContractTab employeeId={employeeId} isShiftCover={shiftCover} /></TabsContent>
         <TabsContent value="payroll"><PayrollTab employeeId={employeeId} /></TabsContent>
-        <TabsContent value="vacations"><VacationsTab employeeId={employeeId} hireDate={emp.hire_date} /></TabsContent>
+        {!shiftCover && <TabsContent value="vacations"><VacationsTab employeeId={employeeId} hireDate={emp.hire_date} /></TabsContent>}
         <TabsContent value="loans"><LoansTab employeeId={employeeId} /></TabsContent>
         <TabsContent value="docs"><DocsTab employeeId={employeeId} /></TabsContent>
       </Tabs>
@@ -87,6 +101,7 @@ function EmployeeDetail() {
 /* =================== GENERAL =================== */
 function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
   const [f, setF] = useState({
+    kind: isShiftCover(emp.position) ? "shift_cover" as EmployeeKind : "regular" as EmployeeKind,
     name: emp.name ?? "",
     position: emp.position ?? "",
     phone: emp.phone ?? "",
@@ -104,6 +119,8 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
 
   const save = async () => {
     const payload: any = { ...f };
+    payload.position = f.kind === "shift_cover" ? SHIFT_COVER_POSITION : f.position || null;
+    delete payload.kind;
     ["birth_date", "hire_date", "termination_date"].forEach((k) => { if (!payload[k]) payload[k] = null; });
     const { error } = await supabase.from("employees").update(payload).eq("id", emp.id);
     if (error) { toast.error(error.message); return; }
@@ -114,8 +131,18 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
   return (
     <Card className="p-4 space-y-3 mt-3">
       <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <Label>Tipo</Label>
+          <Select value={f.kind} onValueChange={(v) => setF({ ...f, kind: v as EmployeeKind, position: v === "shift_cover" ? SHIFT_COVER_POSITION : "" })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="regular">Regular</SelectItem>
+              <SelectItem value="shift_cover">Cubre turnos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div><Label>Nombre</Label><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-        <div><Label>Puesto</Label><Input value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} /></div>
+        <div><Label>Puesto</Label><Input value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} disabled={f.kind === "shift_cover"} /></div>
         <div><Label>Teléfono</Label><Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></div>
         <div><Label>Fecha de nacimiento</Label><Input type="date" value={f.birth_date} onChange={(e) => setF({ ...f, birth_date: e.target.value })} /></div>
         <div><Label>Fecha de ingreso</Label><Input type="date" value={f.hire_date} onChange={(e) => setF({ ...f, hire_date: e.target.value })} /></div>
@@ -131,20 +158,25 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
         <div><Label>Contacto emergencia</Label><Input value={f.emergency_contact_name} onChange={(e) => setF({ ...f, emergency_contact_name: e.target.value })} /></div>
         <div><Label>Tel. emergencia</Label><Input value={f.emergency_contact_phone} onChange={(e) => setF({ ...f, emergency_contact_phone: e.target.value })} /></div>
       </div>
+      {f.kind === "shift_cover" && (
+        <Card className="p-3 bg-muted/40 text-sm text-muted-foreground">
+          Cubre turnos trabaja 2 días por semana y no maneja vacaciones.
+        </Card>
+      )}
       <div className="flex justify-end"><Button onClick={save}><Save className="h-4 w-4 mr-1" /> Guardar</Button></div>
     </Card>
   );
 }
 
 /* =================== CONTRACT =================== */
-function ContractTab({ employeeId }: { employeeId: string }) {
+function ContractTab({ employeeId, isShiftCover }: { employeeId: string; isShiftCover: boolean }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
-    contract_type: "indefinido",
+    contract_type: isShiftCover ? "honorarios" : "indefinido",
     start_date: new Date().toISOString().slice(0, 10),
     end_date: "",
-    pay_schedule: "monthly",
+    pay_schedule: isShiftCover ? "weekly" : "monthly",
     base_amount: "",
     imss_enrolled: false,
     imss_employer_number: "",
@@ -187,6 +219,11 @@ function ContractTab({ employeeId }: { employeeId: string }) {
 
   return (
     <div className="space-y-3 mt-3">
+      {isShiftCover && (
+        <Card className="p-3 bg-muted/40 text-sm text-muted-foreground">
+          Cubre turnos se maneja sin vacaciones ni prestaciones; el contrato nuevo queda como honorarios y pago semanal por defecto.
+        </Card>
+      )}
       <div className="flex justify-end"><Button size="sm" onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" /> Contrato</Button></div>
       {contracts.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">Sin contratos</Card>
