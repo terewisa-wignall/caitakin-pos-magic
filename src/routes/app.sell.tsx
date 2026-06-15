@@ -24,21 +24,15 @@ export const Route = createFileRoute("/app/sell")({
 type Variant = { id: string; variant_name: string; size: string | null; color: string | null; stock: number; price_override_mxn: number | null };
 type Product = { id: string; name: string; photo_url: string | null; base_price_mxn: number; category_id: string | null; variants: Variant[]; categories: { name: string } | null };
 type CartLine = { variantId: string; productId: string; name: string; variantLabel: string; unitPriceMxn: number; quantity: number; stock: number };
-type PaymentMethod = "cash" | "transfer" | "debit_card" | "credit_card" | "hsbc";
+type PaymentMethod = "cash" | "transfer" | "debit_card" | "credit_card";
 type Payment = { method: PaymentMethod; currency: Currency; amount: number; voucherFile?: File | null };
 
-function paymentLabel(method: PaymentMethod) {
-  return {
-    cash: "Efectivo",
-    transfer: "Transferencia",
-    debit_card: "Débito",
-    credit_card: "Crédito",
-    hsbc: "Banco HSBC",
-  }[method];
+function isBankPayment(method: PaymentMethod) {
+  return method !== "cash";
 }
 
 function needsVoucher(method: PaymentMethod) {
-  return method === "hsbc";
+  return isBankPayment(method);
 }
 
 function getFileExt(file: File) {
@@ -188,7 +182,7 @@ function SellPage() {
         return {
           order_id: order.id,
           payment_method: p.method,
-          bank: p.method === "hsbc" ? "HSBC" : null,
+          bank: isBankPayment(p.method) ? "HSBC" : null,
           currency: p.currency,
           amount: p.amount,
           exchange_rate_used: p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1),
@@ -442,7 +436,6 @@ function CartPanel({
                 <SelectItem value="transfer">Transferencia</SelectItem>
                 <SelectItem value="debit_card">Débito</SelectItem>
                 <SelectItem value="credit_card">Crédito</SelectItem>
-                <SelectItem value="hsbc">Banco HSBC</SelectItem>
               </SelectContent>
             </Select>
             {needsVoucher(payments[0]?.method) && (
@@ -473,7 +466,6 @@ function CartPanel({
                       <SelectItem value="transfer">Transfer.</SelectItem>
                       <SelectItem value="debit_card">Débito</SelectItem>
                       <SelectItem value="credit_card">Crédito</SelectItem>
-                      <SelectItem value="hsbc">HSBC</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={p.currency} onValueChange={(v) => setPayment(i, { currency: v as Currency })}>
@@ -521,8 +513,8 @@ function VoucherUpload({
     <div className={compact ? "space-y-1" : "rounded-md border bg-muted/30 p-2 space-y-1"}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium">Voucher HSBC</p>
-          <p className="text-[11px] text-muted-foreground">Pide la foto del comprobante.</p>
+          <p className="text-xs font-medium">Comprobante HSBC</p>
+          <p className="text-[11px] text-muted-foreground">Pide la foto del voucher de banco.</p>
         </div>
         <Label className="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium">
           <Upload className="h-3.5 w-3.5" />
