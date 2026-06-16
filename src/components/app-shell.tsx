@@ -16,19 +16,17 @@ import { toast } from "sonner";
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
 
 const items: NavItem[] = [
-  { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
   { to: "/app/sell", label: "Vender", icon: ShoppingCart },
   { to: "/app/inventory", label: "Inventario", icon: Package },
   { to: "/app/cash", label: "Caja", icon: Wallet },
-  { to: "/app/reports", label: "Reportes", icon: BarChart3 },
-  { to: "/app/commissions", label: "Comisiones", icon: Coins },
+  { to: "/app/reports", label: "Reportes", icon: BarChart3, adminOnly: true },
+  { to: "/app/commissions", label: "Comisiones", icon: Coins, adminOnly: true },
   { to: "/app/finance", label: "Finanzas", icon: Landmark, adminOnly: true },
   { to: "/app/hr", label: "RRHH", icon: IdCard, adminOnly: true },
   { to: "/app/users", label: "Usuarios", icon: Users, adminOnly: true },
   { to: "/app/settings", label: "Configuración", icon: Settings, adminOnly: true },
 ];
-
-const mobileItems = items.slice(0, 5);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, isAdmin } = useAuth();
@@ -37,6 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
 
   const visible = items.filter((i) => !i.adminOnly || isAdmin);
+  const mobileItems = visible.slice(0, 5);
 
   const handleSignOut = async () => {
     await qc.cancelQueries();
@@ -123,7 +122,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 grid grid-cols-5 border-t bg-card/95 backdrop-blur">
+        <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-30 grid border-t bg-card/95 backdrop-blur ${mobileItems.length === 3 ? "grid-cols-3" : "grid-cols-5"}`}>
           {mobileItems.map((item) => {
             const active = pathname.startsWith(item.to);
             const Icon = item.icon;

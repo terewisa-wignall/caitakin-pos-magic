@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   TrendingUp, TrendingDown, Users, Coins, Lock, Plus,
-  ChevronLeft, ChevronRight, Briefcase, FileBarChart,
+  ChevronLeft, ChevronRight, Briefcase, FileBarChart, Pencil, Trash2,
 } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
@@ -235,6 +235,7 @@ function IncomeTab({ year, month }: { year: number; month: number }) {
   const { start, end, startDate, endDate } = monthRange(year, month);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
 
   const q = useQuery({
     queryKey: ["finance-income", year, month],
@@ -247,7 +248,7 @@ function IncomeTab({ year, month }: { year: number; month: number }) {
       const rows = [
         ...((orders.data ?? []).map((o: any) => ({ id: `o-${o.id}`, origin: "venta", concept: `Venta ${String(o.id).slice(0, 6)}`, amount: Number(o.total), currency: o.currency, date: o.created_at }))),
         ...((cashMv.data ?? []).map((m: any) => ({ id: `c-${m.id}`, origin: "caja", concept: m.concept, amount: Number(m.amount), currency: m.currency, date: m.created_at }))),
-        ...((otherInc.data ?? []).map((m: any) => ({ id: `i-${m.id}`, origin: "otro", concept: m.concept, amount: Number(m.amount), currency: m.currency, date: m.income_date }))),
+        ...((otherInc.data ?? []).map((m: any) => ({ ...m, id: `i-${m.id}`, rawId: m.id, origin: "otro", amount: Number(m.amount), date: m.income_date }))),
       ];
       rows.sort((a, b) => +new Date(b.date) - +new Date(a.date));
       return rows;
@@ -257,6 +258,18 @@ function IncomeTab({ year, month }: { year: number; month: number }) {
   const [filter, setFilter] = useState<"all" | "venta" | "caja" | "otro">("all");
   const visible = (q.data ?? []).filter((r) => filter === "all" || r.origin === filter);
   const total = visible.reduce((s, r) => s + r.amount, 0);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["finance-income"] });
+    qc.invalidateQueries({ queryKey: ["finance-totals"] });
+    qc.invalidateQueries({ queryKey: ["finance-yearly"] });
+  };
+  const removeIncome = async (row: any) => {
+    if (!confirm("¿Eliminar ingreso?")) return;
+    const { error } = await (supabase.from as any)("other_incomes").delete().eq("id", row.rawId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Ingreso eliminado");
+    refresh();
+  };
 
   return (
     <div className="space-y-3">
@@ -284,19 +297,28 @@ function IncomeTab({ year, month }: { year: number; month: number }) {
                 <p className="font-medium truncate">{r.concept}</p>
                 <p className="text-xs text-muted-foreground">{formatDateShort(r.date)} · <Badge variant="outline" className="text-[10px] py-0">{r.origin}</Badge></p>
               </div>
-              <p className="font-numeric font-semibold text-success">+{formatMoney(r.amount, r.currency as any)}</p>
+              <div className="flex items-center gap-1">
+                <p className="font-numeric font-semibold text-success">+{formatMoney(r.amount, r.currency as any)}</p>
+                {r.origin === "otro" && (
+                  <>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removeIncome(r)}><Trash2 className="h-4 w-4" /></Button>
+                  </>
+                )}
+              </div>
             </li>
           ))}
           {visible.length === 0 && <li className="p-8 text-center text-sm text-muted-foreground">Sin ingresos</li>}
         </ul>
       </Card>
 
-      <OtherIncomeDialog open={open} onClose={() => { setOpen(false); qc.invalidateQueries({ queryKey: ["finance-income"] }); qc.invalidateQueries({ queryKey: ["finance-totals"] }); qc.invalidateQueries({ queryKey: ["finance-yearly"] }); }} />
+      <OtherIncomeDialog open={open} onClose={() => { setOpen(false); refresh(); }} />
+      <OtherIncomeDialog income={editing} open={!!editing} onClose={() => { setEditing(null); refresh(); }} />
     </div>
   );
 }
 
-function OtherIncomeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function OtherIncomeDialog({ open, onClose, income }: { open: boolean; onClose: () => void; income?: any | null }) {
   const { user } = useAuth();
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState(0);
@@ -306,15 +328,28 @@ function OtherIncomeDialog({ open, onClose }: { open: boolean; onClose: () => vo
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+    setConcept(income?.concept ?? "");
+    setAmount(Number(income?.amount ?? 0));
+    setCurrency(income?.currency ?? "MXN");
+    setDate(income?.income_date ?? income?.date ?? new Date().toISOString().slice(0, 10));
+    setMethod(income?.payment_method ?? "cash");
+    setNote(income?.note ?? "");
+  }, [open, income]);
+
   const submit = async () => {
     if (!concept || !amount) { toast.error("Concepto y monto"); return; }
     setSaving(true);
-    const { error } = await (supabase.from as any)("other_incomes").insert({
+    const payload = {
       concept, amount, currency, income_date: date, payment_method: method, note: note || null, created_by: user?.id,
-    });
+    };
+    const { error } = income?.rawId
+      ? await (supabase.from as any)("other_incomes").update(payload).eq("id", income.rawId)
+      : await (supabase.from as any)("other_incomes").insert(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Ingreso registrado");
+    toast.success(income?.rawId ? "Ingreso actualizado" : "Ingreso registrado");
     setConcept(""); setAmount(0); setNote("");
     onClose();
   };
@@ -322,7 +357,7 @@ function OtherIncomeDialog({ open, onClose }: { open: boolean; onClose: () => vo
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Otro ingreso</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{income?.rawId ? "Editar ingreso" : "Otro ingreso"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Concepto</Label><Input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej. Renta cobrada" /></div>
           <div className="grid grid-cols-2 gap-2">
@@ -358,6 +393,7 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
   const { startDate, endDate } = monthRange(year, month);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
   const [filter, setFilter] = useState<"all" | "fixed" | "variable" | "unexpected">("all");
 
   const q = useQuery({
@@ -368,14 +404,18 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
   const visible = (q.data ?? []).filter((e: any) => filter === "all" || e.type === filter);
   const total = visible.reduce((s: number, e: any) => s + Number(e.amount), 0);
 
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["finance-expenses"] });
+    qc.invalidateQueries({ queryKey: ["finance-totals"] });
+    qc.invalidateQueries({ queryKey: ["finance-yearly"] });
+  };
+
   const remove = async (id: string) => {
     if (!confirm("¿Eliminar gasto?")) return;
     const { error } = await (supabase.from as any)("expenses").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Eliminado");
-    qc.invalidateQueries({ queryKey: ["finance-expenses"] });
-    qc.invalidateQueries({ queryKey: ["finance-totals"] });
-    qc.invalidateQueries({ queryKey: ["finance-yearly"] });
+    refresh();
   };
 
   const labels: Record<string, string> = { fixed: "Fijo", variable: "Variable", unexpected: "Imprevisto" };
@@ -422,7 +462,8 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
               </div>
               <div className="flex items-center gap-2">
                 <p className="font-numeric font-semibold text-destructive">−{formatMoney(Number(e.amount), e.currency)}</p>
-                <Button variant="ghost" size="sm" onClick={() => remove(e.id)}>×</Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(e)}><Pencil className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => remove(e.id)}><Trash2 className="h-4 w-4" /></Button>
               </div>
             </li>
           ))}
@@ -430,12 +471,13 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
         </ul>
       </Card>
 
-      <ExpenseDialog open={open} onClose={() => { setOpen(false); qc.invalidateQueries({ queryKey: ["finance-expenses"] }); qc.invalidateQueries({ queryKey: ["finance-totals"] }); qc.invalidateQueries({ queryKey: ["finance-yearly"] }); }} />
+      <ExpenseDialog open={open} onClose={() => { setOpen(false); refresh(); }} />
+      <ExpenseDialog expense={editing} open={!!editing} onClose={() => { setEditing(null); refresh(); }} />
     </div>
   );
 }
 
-function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ExpenseDialog({ open, onClose, expense }: { open: boolean; onClose: () => void; expense?: any | null }) {
   const { user } = useAuth();
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState(0);
@@ -449,19 +491,36 @@ function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly" | "bimonthly">("monthly");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+    setConcept(expense?.concept ?? "");
+    setAmount(Number(expense?.amount ?? 0));
+    setCurrency(expense?.currency ?? "MXN");
+    setType(expense?.type ?? "variable");
+    setCategory(expense?.category ?? "");
+    setDate(expense?.expense_date ?? new Date().toISOString().slice(0, 10));
+    setMethod(expense?.payment_method ?? "cash");
+    setNote(expense?.note ?? "");
+    setRecurring(Boolean(expense?.is_recurring));
+    setRecurringFrequency(expense?.recurring_frequency ?? "monthly");
+  }, [open, expense]);
+
   const submit = async () => {
     if (!concept || !amount) { toast.error("Concepto y monto"); return; }
     setSaving(true);
-    const { error } = await (supabase.from as any)("expenses").insert({
+    const payload = {
       concept, amount, currency, type, category: category || null,
       expense_date: date, payment_method: method, note: note || null,
       is_recurring: type === "fixed" ? recurring : false,
       recurring_frequency: type === "fixed" && recurring ? recurringFrequency : null,
       created_by: user?.id,
-    });
+    };
+    const { error } = expense?.id
+      ? await (supabase.from as any)("expenses").update(payload).eq("id", expense.id)
+      : await (supabase.from as any)("expenses").insert(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Gasto registrado");
+    toast.success(expense?.id ? "Gasto actualizado" : "Gasto registrado");
     setConcept(""); setAmount(0); setCategory(""); setNote(""); setRecurring(false); setRecurringFrequency("monthly");
     onClose();
   };
@@ -469,7 +528,7 @@ function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nuevo gasto</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{expense?.id ? "Editar gasto" : "Nuevo gasto"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Concepto</Label><Input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej. Renta local" /></div>
           <div className="grid grid-cols-2 gap-2">
@@ -540,6 +599,11 @@ function PayrollTab({ year, month }: { year: number; month: number }) {
   const qc = useQueryClient();
   const [openEmp, setOpenEmp] = useState(false);
   const [openPay, setOpenPay] = useState<any | null>(null);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["finance-payroll"] });
+    qc.invalidateQueries({ queryKey: ["finance-totals"] });
+    qc.invalidateQueries({ queryKey: ["finance-yearly"] });
+  };
 
   const employees = useQuery({
     queryKey: ["finance-employees"],
@@ -552,6 +616,13 @@ function PayrollTab({ year, month }: { year: number; month: number }) {
   });
 
   const totalMonth = (payments.data ?? []).reduce((s: number, p: any) => s + Number(p.amount), 0);
+  const removePayment = async (payment: any) => {
+    if (!confirm("¿Eliminar pago de nómina?")) return;
+    const { error } = await (supabase.from as any)("payroll_payments").delete().eq("id", payment.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pago eliminado");
+    refresh();
+  };
 
   return (
     <div className="space-y-3">
@@ -591,7 +662,11 @@ function PayrollTab({ year, month }: { year: number; month: number }) {
                 <p className="font-medium truncate">{p.employee?.name || "—"}</p>
                 <p className="text-xs text-muted-foreground">{formatDateShort(p.paid_at)} · {formatDateShort(p.period_start)}–{formatDateShort(p.period_end)}</p>
               </div>
-              <p className="font-numeric font-semibold">{formatMoney(Number(p.amount), p.currency)}</p>
+              <div className="flex items-center gap-1">
+                <p className="font-numeric font-semibold">{formatMoney(Number(p.amount), p.currency)}</p>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setOpenPay({ payment: p })}><Pencil className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removePayment(p)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
             </li>
           ))}
           {(payments.data ?? []).length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">Sin pagos</li>}
@@ -599,7 +674,7 @@ function PayrollTab({ year, month }: { year: number; month: number }) {
       </Card>
 
       <EmployeeDialog open={openEmp} onClose={() => { setOpenEmp(false); qc.invalidateQueries({ queryKey: ["finance-employees"] }); }} />
-      <PayrollDialog open={!!openPay} preset={openPay?.employee} employees={employees.data ?? []} onClose={() => { setOpenPay(null); qc.invalidateQueries({ queryKey: ["finance-payroll"] }); qc.invalidateQueries({ queryKey: ["finance-totals"] }); qc.invalidateQueries({ queryKey: ["finance-yearly"] }); }} />
+      <PayrollDialog open={!!openPay} preset={openPay?.employee} payment={openPay?.payment} employees={employees.data ?? []} onClose={() => { setOpenPay(null); refresh(); }} />
     </div>
   );
 }
@@ -644,7 +719,7 @@ function EmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-function PayrollDialog({ open, preset, employees, onClose }: { open: boolean; preset?: any; employees: any[]; onClose: () => void }) {
+function PayrollDialog({ open, preset, payment, employees, onClose }: { open: boolean; preset?: any; payment?: any; employees: any[]; onClose: () => void }) {
   const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState<string>("");
   const [amount, setAmount] = useState(0);
@@ -656,20 +731,34 @@ function PayrollDialog({ open, preset, employees, onClose }: { open: boolean; pr
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
+    if (payment?.id) {
+      setEmployeeId(payment.employee_id);
+      setAmount(Number(payment.amount || 0));
+      setPeriodStart(payment.period_start ?? new Date().toISOString().slice(0, 10));
+      setPeriodEnd(payment.period_end ?? new Date().toISOString().slice(0, 10));
+      setPaidAt(payment.paid_at ?? new Date().toISOString().slice(0, 10));
+      setMethod(payment.payment_method ?? "cash");
+      setNote(payment.note ?? "");
+      return;
+    }
     if (preset?.id) { setEmployeeId(preset.id); setAmount(Number(preset.salary || 0)); }
-  }, [preset?.id, preset?.salary]);
+  }, [open, payment, preset?.id, preset?.salary]);
 
   const submit = async () => {
     if (!employeeId || !amount) { toast.error("Empleado y monto"); return; }
     setSaving(true);
-    const { error } = await (supabase.from as any)("payroll_payments").insert({
+    const payload = {
       employee_id: employeeId, amount, currency: "MXN",
       period_start: periodStart, period_end: periodEnd,
       paid_at: paidAt, payment_method: method, note: note || null, created_by: user?.id,
-    });
+    };
+    const { error } = payment?.id
+      ? await (supabase.from as any)("payroll_payments").update(payload).eq("id", payment.id)
+      : await (supabase.from as any)("payroll_payments").insert(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Pago registrado");
+    toast.success(payment?.id ? "Pago actualizado" : "Pago registrado");
     setAmount(0); setNote("");
     onClose();
   };
@@ -677,7 +766,7 @@ function PayrollDialog({ open, preset, employees, onClose }: { open: boolean; pr
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Pago de nómina</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{payment?.id ? "Editar pago de nómina" : "Pago de nómina"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Empleado</Label>
             <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); const e = employees.find((x) => x.id === v); if (e) setAmount(Number(e.salary || 0)); }}>
@@ -703,7 +792,7 @@ function PayrollDialog({ open, preset, employees, onClose }: { open: boolean; pr
           </div>
           <div><Label>Nota</Label><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></div>
         </div>
-        <DialogFooter><Button onClick={submit} disabled={saving} className="w-full">{saving ? "Guardando..." : "Registrar pago"}</Button></DialogFooter>
+        <DialogFooter><Button onClick={submit} disabled={saving} className="w-full">{saving ? "Guardando..." : payment?.id ? "Guardar cambios" : "Registrar pago"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -743,6 +832,30 @@ function CommissionsTab() {
 
   const selectedRows = (q.data ?? []).filter((c: any) => selected.has(c.id));
   const totalSelected = selectedRows.reduce((s: number, c: any) => s + Number(c.commission_amount), 0);
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["finance-commissions"] });
+    qc.invalidateQueries({ queryKey: ["finance-totals"] });
+    qc.invalidateQueries({ queryKey: ["finance-yearly"] });
+  };
+
+  const undoPayment = async (commission: any) => {
+    if (!confirm("¿Deshacer este pago de comisión? La comisión volverá a pendientes.")) return;
+    const paymentId = commission.payment_id;
+    const { error } = await supabase.from("commissions").update({
+      paid_at: null,
+      payment_id: null,
+      payment_method: null,
+    } as any).eq("id", commission.id);
+    if (error) { toast.error(error.message); return; }
+    if (paymentId) {
+      const { data: stillUsed } = await supabase.from("commissions").select("id").eq("payment_id", paymentId).limit(1);
+      if ((stillUsed ?? []).length === 0) {
+        await (supabase.from as any)("commission_payments").delete().eq("id", paymentId);
+      }
+    }
+    toast.success("Pago de comisión deshecho");
+    refresh();
+  };
 
   return (
     <div className="space-y-3">
@@ -781,7 +894,14 @@ function CommissionsTab() {
                 <p className="font-medium truncate">{c.seller?.name || "—"}</p>
                 <p className="text-xs text-muted-foreground">{formatDateShort(c.created_at)} · {c.commission_rate}%{c.paid_at && ` · Pagada ${formatDateShort(c.paid_at)}`}</p>
               </div>
-              <p className="font-numeric font-semibold">{formatMoney(Number(c.commission_amount), c.currency)}</p>
+              <div className="flex items-center gap-1">
+                <p className="font-numeric font-semibold">{formatMoney(Number(c.commission_amount), c.currency)}</p>
+                {filter === "paid" && (
+                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => undoPayment(c)}>
+                    Deshacer
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
           {(q.data ?? []).length === 0 && <li className="p-8 text-center text-sm text-muted-foreground">Sin comisiones</li>}
@@ -794,7 +914,7 @@ function CommissionsTab() {
         total={totalSelected}
         onClose={(done) => {
           setOpenPay(false);
-          if (done) { setSelected(new Set()); qc.invalidateQueries({ queryKey: ["finance-commissions"] }); qc.invalidateQueries({ queryKey: ["finance-totals"] }); qc.invalidateQueries({ queryKey: ["finance-yearly"] }); }
+          if (done) { setSelected(new Set()); refresh(); }
         }}
       />
     </div>
