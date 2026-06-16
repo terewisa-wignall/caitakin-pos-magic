@@ -540,7 +540,6 @@ export type Database = {
           is_recurring: boolean
           note: string | null
           payment_method: string | null
-          recurring_frequency: string | null
           receipt_url: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at: string
@@ -557,7 +556,6 @@ export type Database = {
           is_recurring?: boolean
           note?: string | null
           payment_method?: string | null
-          recurring_frequency?: string | null
           receipt_url?: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
@@ -574,7 +572,6 @@ export type Database = {
           is_recurring?: boolean
           note?: string | null
           payment_method?: string | null
-          recurring_frequency?: string | null
           receipt_url?: string | null
           type?: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
@@ -728,8 +725,6 @@ export type Database = {
           created_at: string
           currency: string
           customer_id: string | null
-          customer_id_file_name: string | null
-          customer_id_file_path: string | null
           discount: number
           exchange_rate_used: number
           id: string
@@ -742,8 +737,6 @@ export type Database = {
           created_at?: string
           currency?: string
           customer_id?: string | null
-          customer_id_file_name?: string | null
-          customer_id_file_path?: string | null
           discount?: number
           exchange_rate_used?: number
           id?: string
@@ -756,8 +749,6 @@ export type Database = {
           created_at?: string
           currency?: string
           customer_id?: string | null
-          customer_id_file_name?: string | null
-          customer_id_file_path?: string | null
           discount?: number
           exchange_rate_used?: number
           id?: string
@@ -818,39 +809,30 @@ export type Database = {
       payments: {
         Row: {
           amount: number
-          bank: string | null
           created_at: string
           currency: string
           exchange_rate_used: number
           id: string
           order_id: string
           payment_method: string
-          voucher_file_name: string | null
-          voucher_file_path: string | null
         }
         Insert: {
           amount: number
-          bank?: string | null
           created_at?: string
           currency: string
           exchange_rate_used?: number
           id?: string
           order_id: string
           payment_method: string
-          voucher_file_name?: string | null
-          voucher_file_path?: string | null
         }
         Update: {
           amount?: number
-          bank?: string | null
           created_at?: string
           currency?: string
           exchange_rate_used?: number
           id?: string
           order_id?: string
           payment_method?: string
-          voucher_file_name?: string | null
-          voucher_file_path?: string | null
         }
         Relationships: [
           {
@@ -865,12 +847,9 @@ export type Database = {
       payroll_payments: {
         Row: {
           amount: number
-          bonus_amount: number
           created_at: string
           created_by: string | null
           currency: string
-          daily_rate: number | null
-          days_worked: number | null
           employee_id: string
           gross_amount: number | null
           id: string
@@ -883,18 +862,13 @@ export type Database = {
           payment_method: string | null
           period_end: string
           period_start: string
-          receipt_number: string | null
-          severance_amount: number
           updated_at: string
         }
         Insert: {
           amount: number
-          bonus_amount?: number
           created_at?: string
           created_by?: string | null
           currency?: string
-          daily_rate?: number | null
-          days_worked?: number | null
           employee_id: string
           gross_amount?: number | null
           id?: string
@@ -907,18 +881,13 @@ export type Database = {
           payment_method?: string | null
           period_end: string
           period_start: string
-          receipt_number?: string | null
-          severance_amount?: number
           updated_at?: string
         }
         Update: {
           amount?: number
-          bonus_amount?: number
           created_at?: string
           created_by?: string | null
           currency?: string
-          daily_rate?: number | null
-          days_worked?: number | null
           employee_id?: string
           gross_amount?: number | null
           id?: string
@@ -931,8 +900,6 @@ export type Database = {
           payment_method?: string | null
           period_end?: string
           period_start?: string
-          receipt_number?: string | null
-          severance_amount?: number
           updated_at?: string
         }
         Relationships: [
@@ -1198,6 +1165,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_active_seller_or_admin: {
+        Args: { _user_id: string }
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
