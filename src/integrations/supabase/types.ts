@@ -71,7 +71,6 @@ export type Database = {
           opening_amount_eur: number
           opening_amount_mxn: number
           opening_amount_usd: number
-          source_handoff_id: string | null
           status: string
         }
         Insert: {
@@ -86,7 +85,6 @@ export type Database = {
           opening_amount_eur?: number
           opening_amount_mxn?: number
           opening_amount_usd?: number
-          source_handoff_id?: string | null
           status?: string
         }
         Update: {
@@ -101,7 +99,6 @@ export type Database = {
           opening_amount_eur?: number
           opening_amount_mxn?: number
           opening_amount_usd?: number
-          source_handoff_id?: string | null
           status?: string
         }
         Relationships: []
