@@ -540,6 +540,7 @@ export type Database = {
           is_recurring: boolean
           note: string | null
           payment_method: string | null
+          recurring_frequency: string | null
           receipt_url: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at: string
@@ -556,6 +557,7 @@ export type Database = {
           is_recurring?: boolean
           note?: string | null
           payment_method?: string | null
+          recurring_frequency?: string | null
           receipt_url?: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
@@ -572,6 +574,7 @@ export type Database = {
           is_recurring?: boolean
           note?: string | null
           payment_method?: string | null
+          recurring_frequency?: string | null
           receipt_url?: string | null
           type?: Database["public"]["Enums"]["expense_type"]
           updated_at?: string

@@ -379,6 +379,12 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
   };
 
   const labels: Record<string, string> = { fixed: "Fijo", variable: "Variable", unexpected: "Imprevisto" };
+  const recurrenceLabels: Record<string, string> = {
+    weekly: "Semanal",
+    biweekly: "Quincenal",
+    monthly: "Mensual",
+    bimonthly: "Bimestral",
+  };
 
   return (
     <div className="space-y-3">
@@ -406,7 +412,11 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium truncate">{e.concept}</p>
                   <Badge variant="outline" className="text-[10px] py-0">{labels[e.type]}</Badge>
-                  {e.is_recurring && <Badge variant="secondary" className="text-[10px] py-0">Recurrente</Badge>}
+                  {e.is_recurring && (
+                    <Badge variant="secondary" className="text-[10px] py-0">
+                      {recurrenceLabels[e.recurring_frequency] || "Recurrente"}
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">{formatDateShort(e.expense_date)} · {e.category || "—"} · {e.payment_method || "—"}</p>
               </div>
@@ -436,6 +446,7 @@ function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
   const [recurring, setRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly" | "bimonthly">("monthly");
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -444,12 +455,14 @@ function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }
     const { error } = await (supabase.from as any)("expenses").insert({
       concept, amount, currency, type, category: category || null,
       expense_date: date, payment_method: method, note: note || null,
-      is_recurring: type === "fixed" ? recurring : false, created_by: user?.id,
+      is_recurring: type === "fixed" ? recurring : false,
+      recurring_frequency: type === "fixed" && recurring ? recurringFrequency : null,
+      created_by: user?.id,
     });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Gasto registrado");
-    setConcept(""); setAmount(0); setCategory(""); setNote(""); setRecurring(false);
+    setConcept(""); setAmount(0); setCategory(""); setNote(""); setRecurring(false); setRecurringFrequency("monthly");
     onClose();
   };
 
@@ -491,9 +504,25 @@ function ExpenseDialog({ open, onClose }: { open: boolean; onClose: () => void }
             </div>
           </div>
           {type === "fixed" && (
-            <div className="flex items-center justify-between border rounded-lg p-3">
-              <div><p className="text-sm font-medium">Recurrente mensual</p><p className="text-xs text-muted-foreground">Se repetirá cada mes</p></div>
-              <Switch checked={recurring} onCheckedChange={setRecurring} />
+            <div className="space-y-3 border rounded-lg p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="text-sm font-medium">Recurrente</p><p className="text-xs text-muted-foreground">Se repetirá según la periodicidad</p></div>
+                <Switch checked={recurring} onCheckedChange={setRecurring} />
+              </div>
+              {recurring && (
+                <div>
+                  <Label>Periodicidad</Label>
+                  <Select value={recurringFrequency} onValueChange={(v: any) => setRecurringFrequency(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Semanal</SelectItem>
+                      <SelectItem value="biweekly">Quincenal</SelectItem>
+                      <SelectItem value="monthly">Mensual</SelectItem>
+                      <SelectItem value="bimonthly">Bimestral</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           )}
           <div><Label>Nota</Label><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></div>
