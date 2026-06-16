@@ -50,8 +50,9 @@ export function useAuth() {
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
 
-  const isAdmin = roles.includes("admin");
-  const isSeller = roles.includes("seller") || isAdmin;
+  const isActive = profile?.is_active !== false;
+  const isAdmin = isActive && roles.includes("admin");
+  const isSeller = isActive && (roles.includes("seller") || isAdmin);
 
   return { session, user, profile, roles, isAdmin, isSeller, loading };
 }
