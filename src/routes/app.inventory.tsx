@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, AlertTriangle, Upload, X } from "lucide-react";
+import { Camera, Plus, Search, AlertTriangle, Upload, X } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -198,6 +198,7 @@ function InventoryList() {
 
 function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     name: "",
@@ -372,20 +373,39 @@ function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => 
           <div>
             <Label>Foto</Label>
             <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+            />
+            <input
               ref={fileRef}
               type="file"
               accept="image/*"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="hidden"
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fileRef.current?.click()}
-              className="w-full"
-            >
-              <Upload className="h-4 w-4 mr-2" /> {file ? file.name : "Subir foto"}
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => cameraRef.current?.click()}
+                className="w-full"
+              >
+                <Camera className="h-4 w-4 mr-2" /> Tomar foto
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                className="w-full"
+              >
+                <Upload className="h-4 w-4 mr-2" /> Subir
+              </Button>
+            </div>
+            {file && <p className="mt-1 text-xs text-muted-foreground truncate">{file.name}</p>}
           </div>
           <div>
             <Label>Nombre *</Label>

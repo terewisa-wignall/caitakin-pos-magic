@@ -30,7 +30,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ChevronLeft, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Camera, ChevronLeft, Plus, Save, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -82,6 +82,7 @@ function ProductDetail() {
   const { isSeller: canManageInventory } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -307,22 +308,42 @@ function ProductDetail() {
             {canManageInventory && (
               <>
                 <input
+                  ref={cameraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+                <input
                   ref={fileRef}
                   type="file"
                   accept="image/*"
                   onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
                   className="hidden"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-32"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Foto
-                </Button>
+                <div className="grid w-32 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-32"
+                    onClick={() => cameraRef.current?.click()}
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Tomar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-32"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Subir
+                  </Button>
+                </div>
                 {uploadFile && <p className="text-xs text-muted-foreground">{uploadFile.name}</p>}
               </>
             )}
