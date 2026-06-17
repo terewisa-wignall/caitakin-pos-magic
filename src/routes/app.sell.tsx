@@ -9,8 +9,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Search, ShoppingCart, Trash2, Plus, Minus, MessageCircle, Mail, Upload, IdCard } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  Camera,
+  Search,
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  MessageCircle,
+  Mail,
+  Upload,
+  IdCard,
+} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { formatMoney, type Currency } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -360,6 +371,8 @@ function CartPanel({
 }: any) {
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
+  const idCameraRef = useRef<HTMLInputElement>(null);
+  const idFileRef = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -414,11 +427,43 @@ function CartPanel({
                 <p className="text-xs text-amber-800">Solicita ID del cliente. No es obligatorio para cobrar.</p>
               </div>
             </div>
-            <Label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900">
-              <Upload className="h-3.5 w-3.5" />
-              {customerIdFile ? "Cambiar foto de ID" : "Subir foto de ID"}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)} />
-            </Label>
+            <input
+              ref={idCameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)}
+            />
+            <input
+              ref={idFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-300 bg-white text-xs text-amber-900"
+                onClick={() => idCameraRef.current?.click()}
+              >
+                <Camera className="h-3.5 w-3.5 mr-1.5" />
+                Tomar ID
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-300 bg-white text-xs text-amber-900"
+                onClick={() => idFileRef.current?.click()}
+              >
+                <Upload className="h-3.5 w-3.5 mr-1.5" />
+                Subir ID
+              </Button>
+            </div>
             {customerIdFile && <p className="truncate text-xs text-amber-800">{customerIdFile.name}</p>}
           </Card>
         )}
@@ -509,6 +554,9 @@ function VoucherUpload({
   onChange: (file: File | null) => void;
   compact?: boolean;
 }) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className={compact ? "space-y-1" : "rounded-md border bg-muted/30 p-2 space-y-1"}>
       <div className="flex items-center justify-between gap-2">
@@ -516,11 +564,43 @@ function VoucherUpload({
           <p className="text-xs font-medium">Comprobante HSBC</p>
           <p className="text-[11px] text-muted-foreground">Pide la foto del voucher de banco.</p>
         </div>
-        <Label className="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium">
-          <Upload className="h-3.5 w-3.5" />
-          Foto
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(e.target.files?.[0] ?? null)} />
-        </Label>
+        <div className="flex shrink-0 gap-1">
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => cameraRef.current?.click()}
+          >
+            <Camera className="h-3.5 w-3.5 mr-1" />
+            Tomar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5 mr-1" />
+            Subir
+          </Button>
+        </div>
       </div>
       {file && <p className="truncate text-[11px] text-muted-foreground">{file.name}</p>}
     </div>

@@ -261,7 +261,7 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
         if (error) throw error; toast.success("Caja cerrada");
       } else if (type === "handoff") {
         if (!toSellerId) { toast.error("Elige quién recibe el turno"); setLoading(false); return; }
-        const { error: handoffError } = await supabase.from("shift_handoffs" as any).insert({
+        const { error: handoffError } = await supabase.from("shift_handoffs").insert({
           from_session_id: session.id,
           from_seller_id: userId,
           to_seller_id: toSellerId,
@@ -393,7 +393,7 @@ function AcceptHandoffDialog({ handoff, userId, onClose }: { handoff: any | null
         source_handoff_id: handoff.id,
       }).select("id").single();
       if (sessionError || !session) throw sessionError || new Error("No se pudo abrir la caja");
-      const { error: handoffError } = await supabase.from("shift_handoffs" as any).update({
+      const { error: handoffError } = await supabase.from("shift_handoffs").update({
         status: "accepted",
         to_session_id: session.id,
         received_amount_mxn: mxn,
