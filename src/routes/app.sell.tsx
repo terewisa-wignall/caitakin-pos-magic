@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Search, ShoppingCart, Trash2, Plus, Minus, MessageCircle, Mail } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, MessageCircle, Mail, Upload, IdCard } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatMoney, type Currency } from "@/lib/format";
 import { toast } from "sonner";
@@ -24,7 +24,29 @@ export const Route = createFileRoute("/app/sell")({
 type Variant = { id: string; variant_name: string; size: string | null; color: string | null; stock: number; price_override_mxn: number | null };
 type Product = { id: string; name: string; photo_url: string | null; base_price_mxn: number; category_id: string | null; variants: Variant[]; categories: { name: string } | null };
 type CartLine = { variantId: string; productId: string; name: string; variantLabel: string; unitPriceMxn: number; quantity: number; stock: number };
-type Payment = { method: "cash" | "transfer" | "debit_card" | "credit_card"; currency: Currency; amount: number };
+type PaymentMethod = "cash" | "transfer" | "debit_card" | "credit_card";
+type Payment = { method: PaymentMethod; currency: Currency; amount: number; voucherFile?: File | null };
+
+function isBankPayment(method: PaymentMethod) {
+  return method !== "cash";
+}
+
+function needsVoucher(method: PaymentMethod) {
+  return isBankPayment(method);
+}
+
+function getFileExt(file: File) {
+  const fromName = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (fromName) return fromName;
+  return file.type === "image/png" ? "png" : "jpg";
+}
+
+async function uploadSaleDoc(userId: string, orderId: string, kind: "voucher" | "customer-id", file: File) {
+  const path = `${userId}/${orderId}/${kind}-${crypto.randomUUID()}.${getFileExt(file)}`;
+  const { error } = await supabase.storage.from("sale-docs").upload(path, file, { upsert: false });
+  if (error) throw error;
+  return path;
+}
 
 function SellPage() {
   const { user } = useAuth();
@@ -36,6 +58,7 @@ function SellPage() {
   const [discount, setDiscount] = useState(0);
   const [currency, setCurrency] = useState<Currency>("MXN");
   const [payments, setPayments] = useState<Payment[]>([{ method: "cash", currency: "MXN", amount: 0 }]);
+  const [customerIdFile, setCustomerIdFile] = useState<File | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [ticket, setTicket] = useState<{ token: string; total: number } | null>(null);
 
@@ -141,12 +164,31 @@ function SellPage() {
       const { error: itemsErr } = await supabase.from("order_items").insert(items);
       if (itemsErr) throw itemsErr;
 
-      const paymentsToInsert = paymentsClean.map((p) => ({
-        order_id: order.id,
-        payment_method: p.method,
-        currency: p.currency,
-        amount: p.amount,
-        exchange_rate_used: p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1),
+      let customerIdPath: string | null = null;
+      if (customerIdFile) {
+        customerIdPath = await uploadSaleDoc(user.id, order.id, "customer-id", customerIdFile);
+        const { error: idErr } = await supabase
+          .from("orders")
+          .update({ customer_id_file_path: customerIdPath, customer_id_file_name: customerIdFile.name })
+          .eq("id", order.id);
+        if (idErr) throw idErr;
+      }
+
+      const paymentsToInsert = await Promise.all(paymentsClean.map(async (p) => {
+        let voucherPath: string | null = null;
+        if (p.voucherFile) {
+          voucherPath = await uploadSaleDoc(user.id, order.id, "voucher", p.voucherFile);
+        }
+        return {
+          order_id: order.id,
+          payment_method: p.method,
+          bank: isBankPayment(p.method) ? "HSBC" : null,
+          currency: p.currency,
+          amount: p.amount,
+          exchange_rate_used: p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1),
+          voucher_file_path: voucherPath,
+          voucher_file_name: p.voucherFile?.name ?? null,
+        };
       }));
       const { error: payErr } = await supabase.from("payments").insert(paymentsToInsert);
       if (payErr) throw payErr;
@@ -159,6 +201,7 @@ function SellPage() {
     onSuccess: (data) => {
       setTicket(data);
       setCart([]); setDiscount(0); setPayments([{ method: "cash", currency: "MXN", amount: 0 }]);
+      setCustomerIdFile(null);
       setCartOpen(false);
       qc.invalidateQueries({ queryKey: ["sell-products"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
@@ -226,6 +269,7 @@ function SellPage() {
           cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
           discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
           payments={payments} setPayments={setPayments}
+          customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
           updateQty={updateQty} removeLine={removeLine}
           checkout={() => checkout.mutate()} loading={checkout.isPending}
         />
@@ -246,6 +290,7 @@ function SellPage() {
             cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
             discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
             payments={payments} setPayments={setPayments}
+            customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
             updateQty={updateQty} removeLine={removeLine}
             checkout={() => checkout.mutate()} loading={checkout.isPending}
           />
@@ -311,9 +356,10 @@ function SellPage() {
 
 function CartPanel({
   cart, subtotalMxn, totalMxn, totalDisplay, discount, setDiscount, currency, setCurrency,
-  payments, setPayments, updateQty, removeLine, checkout, loading,
+  payments, setPayments, customerIdFile, setCustomerIdFile, updateQty, removeLine, checkout, loading,
 }: any) {
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
+  const showCustomerIdReminder = totalMxn > 1000;
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -359,13 +405,31 @@ function CartPanel({
         <div className="flex justify-between text-sm"><span>Descuento</span><span className="font-numeric">−{formatMoney(discount)}</span></div>
         <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-numeric text-primary">{formatMoney(totalDisplay, currency)}</span></div>
 
+        {showCustomerIdReminder && (
+          <Card className="p-3 bg-amber-50 border-amber-200 text-sm space-y-2">
+            <div className="flex items-start gap-2">
+              <IdCard className="h-4 w-4 mt-0.5 text-amber-700 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium text-amber-900">Venta mayor a $1,000</p>
+                <p className="text-xs text-amber-800">Solicita ID del cliente. No es obligatorio para cobrar.</p>
+              </div>
+            </div>
+            <Label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900">
+              <Upload className="h-3.5 w-3.5" />
+              {customerIdFile ? "Cambiar foto de ID" : "Subir foto de ID"}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)} />
+            </Label>
+            {customerIdFile && <p className="truncate text-xs text-amber-800">{customerIdFile.name}</p>}
+          </Card>
+        )}
+
         <Tabs defaultValue="single">
           <TabsList className="grid grid-cols-2 w-full">
             <TabsTrigger value="single">Pago simple</TabsTrigger>
             <TabsTrigger value="mixed">Pago mixto</TabsTrigger>
           </TabsList>
           <TabsContent value="single" className="space-y-2 pt-3">
-            <Select value={payments[0]?.method} onValueChange={(v) => setPayment(0, { method: v as any })}>
+            <Select value={payments[0]?.method} onValueChange={(v) => setPayment(0, { method: v as PaymentMethod, voucherFile: needsVoucher(v as PaymentMethod) ? payments[0]?.voucherFile ?? null : null })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">Efectivo</SelectItem>
@@ -374,6 +438,12 @@ function CartPanel({
                 <SelectItem value="credit_card">Crédito</SelectItem>
               </SelectContent>
             </Select>
+            {needsVoucher(payments[0]?.method) && (
+              <VoucherUpload
+                file={payments[0]?.voucherFile ?? null}
+                onChange={(file) => setPayment(0, { voucherFile: file })}
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -387,24 +457,33 @@ function CartPanel({
           </TabsContent>
           <TabsContent value="mixed" className="space-y-2 pt-3">
             {payments.map((p: Payment, i: number) => (
-              <div key={i} className="grid grid-cols-[1fr_80px_1fr_auto] gap-1 items-center">
-                <Select value={p.method} onValueChange={(v) => setPayment(i, { method: v as any })}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Efectivo</SelectItem>
-                    <SelectItem value="transfer">Transfer.</SelectItem>
-                    <SelectItem value="debit_card">Débito</SelectItem>
-                    <SelectItem value="credit_card">Crédito</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={p.currency} onValueChange={(v) => setPayment(i, { currency: v as Currency })}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input type="number" value={p.amount || ""} onChange={(e) => setPayment(i, { amount: Number(e.target.value) || 0 })} className="h-9 font-numeric" />
-                <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => setPayments(payments.filter((_: any, idx: number) => idx !== i))}><Trash2 className="h-3 w-3" /></Button>
+              <div key={i} className="space-y-1 rounded-md border p-2">
+                <div className="grid grid-cols-[1fr_80px_1fr_auto] gap-1 items-center">
+                  <Select value={p.method} onValueChange={(v) => setPayment(i, { method: v as PaymentMethod, voucherFile: needsVoucher(v as PaymentMethod) ? p.voucherFile ?? null : null })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Efectivo</SelectItem>
+                      <SelectItem value="transfer">Transfer.</SelectItem>
+                      <SelectItem value="debit_card">Débito</SelectItem>
+                      <SelectItem value="credit_card">Crédito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={p.currency} onValueChange={(v) => setPayment(i, { currency: v as Currency })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" value={p.amount || ""} onChange={(e) => setPayment(i, { amount: Number(e.target.value) || 0 })} className="h-9 font-numeric" />
+                  <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => setPayments(payments.filter((_: any, idx: number) => idx !== i))}><Trash2 className="h-3 w-3" /></Button>
+                </div>
+                {needsVoucher(p.method) && (
+                  <VoucherUpload
+                    file={p.voucherFile ?? null}
+                    compact
+                    onChange={(file) => setPayment(i, { voucherFile: file })}
+                  />
+                )}
               </div>
             ))}
             <Button size="sm" variant="outline" onClick={() => setPayments([...payments, { method: "cash", currency: "MXN", amount: 0 }])}>
@@ -417,6 +496,33 @@ function CartPanel({
           {loading ? "Cobrando..." : "Cobrar"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function VoucherUpload({
+  file,
+  onChange,
+  compact = false,
+}: {
+  file: File | null;
+  onChange: (file: File | null) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? "space-y-1" : "rounded-md border bg-muted/30 p-2 space-y-1"}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium">Comprobante HSBC</p>
+          <p className="text-[11px] text-muted-foreground">Pide la foto del voucher de banco.</p>
+        </div>
+        <Label className="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium">
+          <Upload className="h-3.5 w-3.5" />
+          Foto
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(e.target.files?.[0] ?? null)} />
+        </Label>
+      </div>
+      {file && <p className="truncate text-[11px] text-muted-foreground">{file.name}</p>}
     </div>
   );
 }

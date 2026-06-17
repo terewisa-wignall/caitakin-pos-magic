@@ -1,83 +1,69 @@
 ## Objetivo
 
-1. Reemplazar el logo actual por el bordado **circular de CAsitakin** que subiste, conservando la paleta actual.
-2. Permitir agregar **tallas rápidas** al inventario por tipo de categoría (Niños, Niñas, Damas, Caballeros, Unitalla, Numérico), para no tener que crear cada variante una por una.
+Módulo solo-admin para llevar el expediente completo de cada vendedora: datos personales, contrato, IMSS/Infonavit, vacaciones, nómina (día/semana/quincena/mensual), préstamos/deudas y archivos (contrato, INE, comprobantes).
 
-No se cambia la paleta, ni la estructura del POS, ni el resto de pantallas.
+Se integra con lo que ya existe (`profiles`, `payroll_payments`, `commissions`) sin romperlo.
 
----
+## Nueva sección en la app
 
-## 1. Logo bordado
+Ruta `/app/hr` (Recursos Humanos), visible en el menú solo para admin. Mismo estilo Material/mobile-first que Finanzas.
 
-- Subo la imagen circular bordada (`ChatGPT_Image_11_jun_2026_04_49_54_p.m..png`) como asset CDN (`src/assets/logo.png.asset.json`) usando `lovable-assets`.
-- Elimino el `src/assets/logo.png` actual (el minimalista generado).
-- Actualizo los 3 lugares que ya importan `@/assets/logo.png` para que importen el pointer JSON y usen su `url`:
-  - `src/components/app-shell.tsx` (header sidebar y top-bar móvil)
-  - `src/routes/auth.tsx` (pantalla de login)
-  - `src/routes/t.$token.tsx` (ticket público)
-- En el ticket impreso y la barra superior conservo el tamaño actual; el logo circular queda perfecto como ícono cuadrado.
-- Como bonus rápido: actualizo el `<title>` y el favicon del root para que apunte al mismo asset (la pestaña del navegador también muestra el logo).
+**Pantallas:**
 
----
+1. **Lista de vendedoras** — cards con foto/inicial, nombre, puesto, antigüedad, estado (activa / baja / vacaciones), saldo de préstamo pendiente. Filtros: activas, bajas, con préstamo, en vacaciones. Buscador por nombre.
 
-## 2. Tallas rápidas por categoría
+2. **Detalle de vendedora** — pestañas:
+   - **General**: nombre, teléfono, dirección, fecha de nacimiento, fecha de ingreso, fecha de baja, puesto, NSS, CURP, RFC, contacto de emergencia.
+   - **Contratación**: tipo de contrato, fecha inicio/fin, esquema de pago (día / semana / quincena / mensual), monto base, comisión, alta IMSS sí/no, número patronal, Infonavit sí/no, % o monto Infonavit.
+   - **Nómina**: historial de pagos (los que ya genera el módulo de nómina existente), botón "Registrar pago" con periodo, bruto, deducciones (IMSS, Infonavit, préstamo), neto. Resumen anual.
+   - **Vacaciones**: días que le corresponden por antigüedad (cálculo automático LFT), días tomados, saldo. Botón "Registrar vacaciones" con rango de fechas y notas. Estado visual: disfrutando / próximas / disponibles.
+   - **Préstamos y deudas**: lista con monto, fecha, saldo, modo (automático/manual). Al crear se elige: descuento automático (monto fijo cada nómina hasta saldar) o manual (admin registra abono). Vista de movimientos del préstamo.
+   - **Documentos**: subir/ver contrato PDF, INE, comprobantes IMSS, comprobantes Infonavit, otros. Cada archivo con tipo, fecha y descarga. Storage privado.
 
-### Problema actual
+3. **Resumen RRHH** (opcional, header del módulo): total vendedoras activas, vacaciones esta semana, préstamos por cobrar, próximos cumpleaños.
 
-En el detalle del producto sólo hay un formulario que agrega **una variante a la vez** con campos libres (nombre, talla, color, stock, precio). Cargar un vestido con 6 tallas implica llenar el formulario 6 veces.
+## Modelo de datos
 
-### Solución
+Tablas nuevas en `public`, todas admin-only vía `is_admin(auth.uid())`, con GRANT a `authenticated` + `service_role`, RLS habilitado, triggers `updated_at`:
 
-En la pantalla **Detalle de producto** (`src/routes/app.inventory.$productId.tsx`), arriba del formulario actual de "Agregar variante", añado una sección nueva: **"Agregar set de tallas"**.
+- **`employee_profiles`** (1-a-1 con `profiles.id`): phone, address, birth_date, hire_date, termination_date, position, nss, curp, rfc, emergency_contact_name, emergency_contact_phone, notes.
+- **`employment_contracts`**: employee_id, contract_type (indefinido/temporal/honorarios), start_date, end_date, pay_schedule (daily/weekly/biweekly/monthly), base_amount, currency, imss_enrolled, imss_employer_number, infonavit_enrolled, infonavit_type (percent/fixed), infonavit_value, is_active.
+- **`vacation_records`**: employee_id, start_date, end_date, days, status (planned/in_progress/taken/cancelled), notes.
+- **`employee_loans`**: employee_id, principal, balance, currency, mode (auto/manual), installment_amount (si auto), start_date, status (active/paid/cancelled), notes.
+- **`loan_payments`**: loan_id, amount, paid_at, source (payroll/manual), payroll_payment_id (FK opcional), notes.
+- **`employee_documents`**: employee_id, doc_type (contract/ine/imss/infonavit/other), file_path, file_name, mime_type, size_bytes, uploaded_at.
 
-Componente nuevo (`src/components/size-set-picker.tsx`):
+**Reutilizamos** `payroll_payments` para el historial de nómina y le agregamos columnas opcionales: `gross_amount`, `imss_deduction`, `infonavit_deduction`, `loan_deduction`, `loan_id` (FK a `employee_loans`).
 
-- **Selector de set de tallas** con presets:
-  - Niños: `2, 4, 6, 8, 10, 12, 14`
-  - Niñas: `2, 4, 6, 8, 10, 12, 14`
-  - Damas: `CH, M, G, EG`
-  - Caballeros: `CH, M, G, EG, XG`
-  - Unitalla: `Unitalla`
-  - Numérico mujer: `26, 28, 30, 32, 34`
-  - Numérico hombre: `30, 32, 34, 36, 38`
-  - Calzado: `22, 23, 24, 25, 26, 27, 28`
-  - **Personalizado** (campo de texto separado por comas)
-- Cada talla del set se muestra como **chip seleccionable** — el usuario puede desmarcar las que no aplican.
-- Un solo campo **"Stock por talla"** (se aplica a todas; el stock fino se ajusta luego en la lista).
-- Campo opcional **"Color"** (también se aplica a todas las tallas seleccionadas).
-- Botón **"Crear N variantes"** → inserta todas las variantes en una sola operación (`product_variants` insert batch). El `variant_name` se autogenera como `Talla X` o `Talla X · Color`.
+Cuando se registra un pago de nómina con `loan_deduction > 0`, un trigger inserta una fila en `loan_payments` y reduce `employee_loans.balance` (lo marca `paid` si llega a 0).
 
-### Mejora del formulario actual
+Para préstamos en modo `auto`, al abrir el formulario de nómina se precarga `loan_deduction = installment_amount` (mín entre cuota y balance).
 
-- El formulario individual de "Agregar variante" se queda, pero se colapsa en un acordeón ("Agregar una variante manual") porque el caso común será el bulk.
-- En la lista de variantes existentes muestro la talla y el color como **badges** en vez de texto plano, para que se lea mejor.
+## Storage
 
-### Sugerencia automática del set
+Bucket privado nuevo `employee-docs`. Policies en `storage.objects`: solo admin (`is_admin(auth.uid())`) puede SELECT/INSERT/UPDATE/DELETE objetos cuyo `bucket_id = 'employee-docs'`. Path por archivo: `{employee_id}/{doc_type}/{uuid}-{filename}`.
 
-Cuando el producto pertenece a una categoría con nombre que contiene `niñ`, `dama`, `caballero`, `unitalla`, etc., el selector **pre-selecciona el set sugerido** (sin forzar — puede cambiarlo).
+## Cálculo de vacaciones (LFT México)
 
----
+Función SQL `public.vacation_days_by_seniority(hire_date date)` que devuelve los días anuales según la reforma 2023:
+año 1 = 12, año 2 = 14, año 3 = 16, año 4 = 18, año 5 = 20, años 6-10 = 22, +2 cada 5 años adicionales. El detalle de vendedora muestra días que le tocan, tomados y saldo.
 
-## Detalles técnicos
+## Permisos
 
-- No hay cambios de schema: `product_variants` ya tiene `variant_name`, `size`, `color`, `stock`, `price_override_mxn`.
-- El insert batch usa el cliente del navegador con la RLS existente (`admin write variants`).
-- Los presets viven como constante en el componente (`SIZE_SETS`) para poder ajustarlos fácil más adelante.
-- La paleta y los tokens de color (`--primary` terracota, `--secondary` verde suave, `--accent` dorado) **no se tocan**.
+- Todo el módulo y todas las tablas/storage: solo `is_admin(auth.uid())`.
+- No se expone nada a sellers, ni siquiera sus propios datos por ahora (puede agregarse luego).
 
----
+## Archivos a crear/editar
 
-## Archivos afectados
+- `supabase/migrations/<timestamp>_hr_module.sql`: 6 tablas nuevas + columnas en `payroll_payments` + función vacaciones + trigger de loan deduction + policies + bucket vía tool aparte.
+- `src/routes/app.hr.tsx`: lista de vendedoras.
+- `src/routes/app.hr.$employeeId.tsx`: detalle con tabs.
+- `src/components/app-shell.tsx`: agregar item "RRHH" en el menú (solo admin).
+- `src/integrations/supabase/types.ts`: se regenera tras la migración.
 
-| Archivo | Cambio |
-| --- | --- |
-| `src/assets/logo.png.asset.json` | nuevo pointer al logo bordado en CDN |
-| `src/assets/logo.png` | eliminado (binario antiguo) |
-| `src/routes/__root.tsx` | favicon apuntando al nuevo asset |
-| `src/components/app-shell.tsx` | usa `logoAsset.url` |
-| `src/routes/auth.tsx` | usa `logoAsset.url` |
-| `src/routes/t.$token.tsx` | usa `logoAsset.url` |
-| `src/components/size-set-picker.tsx` | **nuevo** — selector de set + chips + insert batch |
-| `src/routes/app.inventory.$productId.tsx` | integra el picker, colapsa form manual, muestra badges |
+## Fuera de alcance
 
-Tiempo estimado de implementación: corto. Listo para ejecutar cuando lo apruebes.
+- Cálculo automático de IMSS/Infonavit con tablas oficiales (se registran como monto manual).
+- Recibos de nómina timbrados / CFDI.
+- Auto-pago a banco.
+- Vista de vendedora sobre su propio expediente.

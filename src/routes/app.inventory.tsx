@@ -269,7 +269,9 @@ function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => 
       let photo_url: string | null = null;
       if (file) {
         const path = `${crypto.randomUUID()}-${file.name}`;
-        const { error: upErr } = await supabase.storage.from("product-photos").upload(path, file);
+        const { error: upErr } = await supabase.storage
+          .from("product-photos")
+          .upload(path, file);
         if (upErr) throw upErr;
         const { data: signed } = await supabase.storage
           .from("product-photos")
