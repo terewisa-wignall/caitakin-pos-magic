@@ -78,7 +78,7 @@ function CashPage() {
     queryFn: async () => {
       if (!user?.id) return [];
       const { data } = await supabase
-        .from("shift_handoffs" as any)
+        .from("shift_handoffs")
         .select("*")
         .eq("to_seller_id", user.id)
         .eq("status", "pending")
