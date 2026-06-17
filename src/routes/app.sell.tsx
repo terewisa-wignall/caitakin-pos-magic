@@ -18,7 +18,6 @@ import {
   Minus,
   MessageCircle,
   Mail,
-  Upload,
   IdCard,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -372,20 +371,34 @@ function CartPanel({
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
   const idCameraRef = useRef<HTMLInputElement>(null);
-  const idFileRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b p-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Artículos</p>
+            <p className="text-lg font-bold font-numeric">{cart.length}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-xl font-bold font-numeric text-primary">
+              {formatMoney(totalDisplay, currency)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-h-56 shrink-0 overflow-y-auto p-4 space-y-2">
         {cart.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">Carrito vacío</p>
+          <p className="text-sm text-muted-foreground text-center py-5">Carrito vacío</p>
         ) : cart.map((l: CartLine) => (
-          <div key={l.variantId} className="flex gap-3 items-start">
+          <div key={l.variantId} className="flex gap-2 items-start rounded-md border p-2">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{l.name}</p>
-              <p className="text-xs text-muted-foreground">{l.variantLabel}</p>
-              <p className="text-sm font-numeric mt-1">{formatMoney(l.unitPriceMxn)}</p>
+              <p className="text-xs text-muted-foreground truncate">{l.variantLabel}</p>
+              <p className="text-xs font-numeric mt-0.5">{formatMoney(l.unitPriceMxn)}</p>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(l.variantId, -1)}><Minus className="h-3 w-3" /></Button>
               <span className="w-6 text-center font-numeric text-sm">{l.quantity}</span>
               <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(l.variantId, 1)}><Plus className="h-3 w-3" /></Button>
@@ -395,7 +408,7 @@ function CartPanel({
         ))}
       </div>
 
-      <div className="border-t p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto border-t p-4 space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label className="text-xs">Descuento (MXN)</Label>
@@ -435,35 +448,16 @@ function CartPanel({
               className="hidden"
               onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)}
             />
-            <input
-              ref={idFileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="border-amber-300 bg-white text-xs text-amber-900"
-                onClick={() => idCameraRef.current?.click()}
-              >
-                <Camera className="h-3.5 w-3.5 mr-1.5" />
-                Tomar ID
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="border-amber-300 bg-white text-xs text-amber-900"
-                onClick={() => idFileRef.current?.click()}
-              >
-                <Upload className="h-3.5 w-3.5 mr-1.5" />
-                Subir ID
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full border-amber-300 bg-white text-xs text-amber-900"
+              onClick={() => idCameraRef.current?.click()}
+            >
+              <Camera className="h-3.5 w-3.5 mr-1.5" />
+              Tomar foto de ID
+            </Button>
             {customerIdFile && <p className="truncate text-xs text-amber-800">{customerIdFile.name}</p>}
           </Card>
         )}
@@ -555,7 +549,6 @@ function VoucherUpload({
   compact?: boolean;
 }) {
   const cameraRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className={compact ? "space-y-1" : "rounded-md border bg-muted/30 p-2 space-y-1"}>
@@ -564,19 +557,12 @@ function VoucherUpload({
           <p className="text-xs font-medium">Comprobante HSBC</p>
           <p className="text-[11px] text-muted-foreground">Pide la foto del voucher de banco.</p>
         </div>
-        <div className="flex shrink-0 gap-1">
+        <div className="shrink-0">
           <input
             ref={cameraRef}
             type="file"
             accept="image/*"
             capture="environment"
-            className="hidden"
-            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
             className="hidden"
             onChange={(e) => onChange(e.target.files?.[0] ?? null)}
           />
@@ -588,17 +574,7 @@ function VoucherUpload({
             onClick={() => cameraRef.current?.click()}
           >
             <Camera className="h-3.5 w-3.5 mr-1" />
-            Tomar
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={() => fileRef.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5 mr-1" />
-            Subir
+            Tomar foto
           </Button>
         </div>
       </div>
