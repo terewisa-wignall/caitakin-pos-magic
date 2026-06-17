@@ -71,6 +71,7 @@ export type Database = {
           opening_amount_eur: number
           opening_amount_mxn: number
           opening_amount_usd: number
+          source_handoff_id: string | null
           status: string
         }
         Insert: {
@@ -85,6 +86,7 @@ export type Database = {
           opening_amount_eur?: number
           opening_amount_mxn?: number
           opening_amount_usd?: number
+          source_handoff_id?: string | null
           status?: string
         }
         Update: {
@@ -99,9 +101,18 @@ export type Database = {
           opening_amount_eur?: number
           opening_amount_mxn?: number
           opening_amount_usd?: number
+          source_handoff_id?: string | null
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cash_sessions_source_handoff_id_fkey"
+            columns: ["source_handoff_id"]
+            isOneToOne: false
+            referencedRelation: "shift_handoffs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
@@ -541,6 +552,7 @@ export type Database = {
           note: string | null
           payment_method: string | null
           receipt_url: string | null
+          recurring_frequency: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at: string
         }
@@ -557,6 +569,7 @@ export type Database = {
           note?: string | null
           payment_method?: string | null
           receipt_url?: string | null
+          recurring_frequency?: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
         }
@@ -573,6 +586,7 @@ export type Database = {
           note?: string | null
           payment_method?: string | null
           receipt_url?: string | null
+          recurring_frequency?: string | null
           type?: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
         }
@@ -1052,6 +1066,87 @@ export type Database = {
         }
         Relationships: []
       }
+      shift_handoffs: {
+        Row: {
+          accepted_at: string | null
+          cancelled_at: string | null
+          created_at: string
+          from_seller_id: string
+          from_session_id: string
+          handoff_amount_eur: number
+          handoff_amount_mxn: number
+          handoff_amount_usd: number
+          id: string
+          note: string | null
+          received_amount_eur: number | null
+          received_amount_mxn: number | null
+          received_amount_usd: number | null
+          sales_amount_eur: number
+          sales_amount_mxn: number
+          sales_amount_usd: number
+          status: string
+          to_seller_id: string
+          to_session_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          from_seller_id: string
+          from_session_id: string
+          handoff_amount_eur?: number
+          handoff_amount_mxn?: number
+          handoff_amount_usd?: number
+          id?: string
+          note?: string | null
+          received_amount_eur?: number | null
+          received_amount_mxn?: number | null
+          received_amount_usd?: number | null
+          sales_amount_eur?: number
+          sales_amount_mxn?: number
+          sales_amount_usd?: number
+          status?: string
+          to_seller_id: string
+          to_session_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          from_seller_id?: string
+          from_session_id?: string
+          handoff_amount_eur?: number
+          handoff_amount_mxn?: number
+          handoff_amount_usd?: number
+          id?: string
+          note?: string | null
+          received_amount_eur?: number | null
+          received_amount_mxn?: number | null
+          received_amount_usd?: number | null
+          sales_amount_eur?: number
+          sales_amount_mxn?: number
+          sales_amount_usd?: number
+          status?: string
+          to_seller_id?: string
+          to_session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_handoffs_from_session_id_fkey"
+            columns: ["from_session_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_handoffs_to_session_id_fkey"
+            columns: ["to_session_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           created_at: string
@@ -1160,6 +1255,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cash_session_belongs_to_user: {
+        Args: { _session_id: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
