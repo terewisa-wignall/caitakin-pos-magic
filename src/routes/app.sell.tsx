@@ -25,6 +25,7 @@ import { formatMoney, type Currency } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { QRCodeSVG } from "qrcode.react";
+import { sortVariantsBySize } from "@/lib/sizes";
 
 export const Route = createFileRoute("/app/sell")({
   head: () => ({ meta: [{ title: "Vender · CAsitakin" }] }),
@@ -112,6 +113,13 @@ function SellPage() {
   const subtotalMxn = cart.reduce((s, l) => s + l.unitPriceMxn * l.quantity, 0);
   const totalMxn = Math.max(0, subtotalMxn - discount);
   const totalDisplay = currency === "MXN" ? totalMxn : totalMxn / (rates.data?.[currency] ?? 1);
+  const paymentTotalMxn = payments.reduce((sum, p) => {
+    const amount = Math.max(0, Number(p.amount) || 0);
+    const rate = p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1);
+    return sum + amount * rate;
+  }, 0);
+  const paymentDeltaMxn = paymentTotalMxn - totalMxn;
+  const paymentsMatchTotal = cart.length > 0 && totalMxn > 0 && Math.abs(paymentDeltaMxn) <= 0.01;
 
   const addLine = (product: Product, variant: Variant) => {
     if (variant.stock <= 0) { toast.error("Sin stock"); return; }
@@ -147,6 +155,18 @@ function SellPage() {
 
       const paymentsClean = payments.filter((p) => p.amount > 0);
       if (paymentsClean.length === 0) throw new Error("Registra al menos un pago");
+      const paidMxn = paymentsClean.reduce((sum, p) => {
+        const rateForPayment = p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1);
+        return sum + Number(p.amount || 0) * rateForPayment;
+      }, 0);
+      const paymentDifference = paidMxn - totalMxn;
+      if (Math.abs(paymentDifference) > 0.01) {
+        throw new Error(
+          paymentDifference < 0
+            ? `Falta registrar ${formatMoney(Math.abs(paymentDifference), "MXN")} en pagos`
+            : `El pago excede el total por ${formatMoney(paymentDifference, "MXN")}`,
+        );
+      }
 
       const rate = currency === "MXN" ? 1 : (rates.data?.[currency] ?? 1);
       const totalInCurrency = currency === "MXN" ? totalMxn : totalMxn / rate;
@@ -279,6 +299,7 @@ function SellPage() {
           cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
           discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
           payments={payments} setPayments={setPayments}
+          paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
           customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
           updateQty={updateQty} removeLine={removeLine}
           checkout={() => checkout.mutate()} loading={checkout.isPending}
@@ -300,6 +321,7 @@ function SellPage() {
             cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
             discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
             payments={payments} setPayments={setPayments}
+            paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
             customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
             updateQty={updateQty} removeLine={removeLine}
             checkout={() => checkout.mutate()} loading={checkout.isPending}
@@ -315,7 +337,7 @@ function SellPage() {
             <p className="text-sm text-muted-foreground">Este producto no tiene variantes. <Link to="/app/inventory" className="text-primary underline">Agregar</Link></p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {variantPickerFor?.variants.map((v) => (
+              {sortVariantsBySize(variantPickerFor?.variants ?? []).map((v) => (
                 <button
                   key={v.id}
                   disabled={v.stock <= 0}
@@ -366,7 +388,7 @@ function SellPage() {
 
 function CartPanel({
   cart, subtotalMxn, totalMxn, totalDisplay, discount, setDiscount, currency, setCurrency,
-  payments, setPayments, customerIdFile, setCustomerIdFile, updateQty, removeLine, checkout, loading,
+  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile, updateQty, removeLine, checkout, loading,
 }: any) {
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
@@ -531,7 +553,22 @@ function CartPanel({
           </TabsContent>
         </Tabs>
 
-        <Button className="w-full" size="lg" disabled={loading || cart.length === 0 || totalMxn <= 0} onClick={checkout}>
+        {cart.length > 0 && (
+          <div className={`rounded-md border p-2 text-sm ${paymentsMatchTotal ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}>
+            <div className="flex justify-between gap-2">
+              <span>Pagado</span>
+              <span className="font-numeric">{formatMoney(paymentTotalMxn, "MXN")}</span>
+            </div>
+            {!paymentsMatchTotal && (
+              <div className="flex justify-between gap-2 text-xs">
+                <span>{paymentDeltaMxn < 0 ? "Falta" : "Excede"}</span>
+                <span className="font-numeric">{formatMoney(Math.abs(paymentDeltaMxn), "MXN")}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Button className="w-full" size="lg" disabled={loading || cart.length === 0 || totalMxn <= 0 || !paymentsMatchTotal} onClick={checkout}>
           {loading ? "Cobrando..." : "Cobrar"}
         </Button>
       </div>

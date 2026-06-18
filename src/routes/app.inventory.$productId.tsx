@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Switch } from "@/components/ui/switch";
 import { SizeSetPicker } from "@/components/size-set-picker";
+import { sortVariantsBySize } from "@/lib/sizes";
 
 export const Route = createFileRoute("/app/inventory/$productId")({
   component: ProductDetail,
@@ -453,7 +454,7 @@ function ProductDetail() {
       <Card className="p-5">
         <h2 className="font-semibold mb-3">Variantes</h2>
         <div className="space-y-2">
-          {p.variants.map((v) => (
+          {sortVariantsBySize(p.variants).map((v) => (
             <VariantEditor
               key={v.id}
               variant={v}
@@ -472,6 +473,7 @@ function ProductDetail() {
             <SizeSetPicker
               productId={productId}
               categoryName={p.categories?.name}
+              existingSizes={p.variants.map((variant) => variant.size).filter(Boolean) as string[]}
               onCreated={refreshProduct}
             />
 

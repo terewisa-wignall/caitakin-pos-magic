@@ -20,6 +20,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { formatMoney } from "@/lib/format";
+import { sortSizes } from "@/lib/sizes";
 
 const QUICK_SIZE_SETS = [
   { id: "unitalla", label: "Unitalla", sizes: ["Unitalla"] },
@@ -29,32 +30,6 @@ const QUICK_SIZE_SETS = [
   { id: "caballeros", label: "Caballeros", sizes: ["CH", "M", "G", "EG", "XG"] },
   { id: "calzado", label: "Calzado", sizes: ["22", "23", "24", "25", "26", "27", "28"] },
 ];
-
-const TEXT_SIZE_ORDER = ["XXS", "XS", "S", "CH", "M", "G", "L", "EG", "XL", "XG", "XXL"];
-
-function getSizeSortValue(size: string) {
-  const normalized = size.trim().toUpperCase();
-  const textIndex = TEXT_SIZE_ORDER.indexOf(normalized);
-  if (textIndex >= 0) return textIndex + 1000;
-
-  const numeric = Number.parseFloat(normalized.replace(",", "."));
-  if (Number.isFinite(numeric)) return numeric;
-
-  const rangeStart = normalized.match(/^(\d+(?:\.\d+)?)-/);
-  if (rangeStart) return Number.parseFloat(rangeStart[1]);
-
-  if (normalized === "UNITALLA") return 2000;
-  return 3000;
-}
-
-function sortSizes(sizes: string[]) {
-  return [...sizes].sort((a, b) => {
-    const aValue = getSizeSortValue(a);
-    const bValue = getSizeSortValue(b);
-    if (aValue !== bValue) return aValue - bValue;
-    return a.localeCompare(b, "es", { numeric: true, sensitivity: "base" });
-  });
-}
 
 type InventoryVariant = {
   id: string;

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { normalizeSize, sortSizes } from "@/lib/sizes";
 
 type SizeSet = { id: string; label: string; sizes: string[] };
 
@@ -37,10 +38,12 @@ function suggestSetId(categoryName?: string | null): string {
 export function SizeSetPicker({
   productId,
   categoryName,
+  existingSizes = [],
   onCreated,
 }: {
   productId: string;
   categoryName?: string | null;
+  existingSizes?: string[];
   onCreated: () => void;
 }) {
   const initialSet = useMemo(() => suggestSetId(categoryName), [categoryName]);
@@ -71,6 +74,10 @@ export function SizeSetPicker({
     currentSet.id === "custom"
       ? customSizes.split(",").map((s) => s.trim()).filter(Boolean)
       : currentSet.sizes;
+  const existingSizeSet = useMemo(
+    () => new Set(existingSizes.map((size) => normalizeSize(size))),
+    [existingSizes],
+  );
 
   const toggleSize = (size: string) => {
     setSelected((prev) => {
@@ -81,10 +88,14 @@ export function SizeSetPicker({
     });
   };
 
-  const sizesToCreate =
+  const selectedSizes =
     currentSet.id === "custom"
       ? availableSizes
       : availableSizes.filter((s) => selected.has(s));
+  const duplicateSizes = selectedSizes.filter((size) => existingSizeSet.has(normalizeSize(size)));
+  const sizesToCreate = sortSizes(
+    selectedSizes.filter((size) => !existingSizeSet.has(normalizeSize(size))),
+  );
 
   const submit = async () => {
     if (sizesToCreate.length === 0) {
@@ -119,7 +130,7 @@ export function SizeSetPicker({
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold">Agregar set de tallas</p>
         <span className="text-xs text-muted-foreground">
-          {sizesToCreate.length} talla{sizesToCreate.length === 1 ? "" : "s"} seleccionada{sizesToCreate.length === 1 ? "" : "s"}
+          {sizesToCreate.length} nueva{sizesToCreate.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -169,6 +180,12 @@ export function SizeSetPicker({
             })}
           </div>
         </div>
+      )}
+
+      {duplicateSizes.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Ya existen: {sortSizes(duplicateSizes).join(", ")}. No se duplicarán.
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-2">
