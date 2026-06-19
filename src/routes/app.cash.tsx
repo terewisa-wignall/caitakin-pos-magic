@@ -93,14 +93,14 @@ function CashPage() {
     queryFn: async () => {
       if (!session.data) return { MXN: 0, USD: 0, EUR: 0 };
       const { data } = await supabase
-        .from("orders")
-        .select("total,currency")
-        .eq("seller_id", session.data.opened_by)
-        .gte("created_at", session.data.opened_at);
+        .from("payments")
+        .select("amount,currency, order:orders!inner(seller_id,created_at)")
+        .eq("order.seller_id", session.data.opened_by)
+        .gte("order.created_at", session.data.opened_at);
       const totals = { MXN: 0, USD: 0, EUR: 0 };
-      (data ?? []).forEach((o: any) => {
-        const currency = o.currency as Currency;
-        if (currency in totals) totals[currency] += Number(o.total || 0);
+      (data ?? []).forEach((payment: any) => {
+        const currency = payment.currency as Currency;
+        if (currency in totals) totals[currency] += Number(payment.amount || 0);
       });
       return totals;
     },
@@ -171,7 +171,7 @@ function CashPage() {
                     <p className="text-xs text-success">Ventas: {formatMoney(sales, c)}</p>
                     <p className="text-xs text-success">+ {formatMoney(summary[c].income, c)}</p>
                     <p className="text-xs text-destructive">− {formatMoney(summary[c].expense, c)}</p>
-                    <p className="font-numeric font-semibold mt-1">{formatMoney(opening + summary[c].income - summary[c].expense, c)}</p>
+                    <p className="font-numeric font-semibold mt-1">{formatMoney(opening + sales + summary[c].income - summary[c].expense, c)}</p>
                   </div>
                 );
               })}
