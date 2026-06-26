@@ -644,7 +644,7 @@ function PayrollTab({ year, month }: { year: number; month: number }) {
             <li key={e.id} className="py-2 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium truncate">{e.name} {!e.is_active && <Badge variant="outline" className="text-[10px]">Inactivo</Badge>}</p>
-                <p className="text-xs text-muted-foreground">{e.position || "—"} · {e.frequency === "weekly" ? "Semanal" : "Mensual"} · {formatMoney(Number(e.salary))}</p>
+                <p className="text-xs text-muted-foreground">{e.position || "—"} · {formatMoney(Number(e.salary))} por día · pago {e.frequency === "weekly" ? "semanal" : "mensual"}</p>
               </div>
               <Button size="sm" variant="outline" onClick={() => setOpenPay({ employee: e })}>Pagar</Button>
             </li>
@@ -705,7 +705,7 @@ function EmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void 
           <div><Label>Nombre</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div><Label>Puesto</Label><Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Vendedora, ayudante…" /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Sueldo</Label><Input type="number" value={salary} onChange={(e) => setSalary(Number(e.target.value))} className="font-numeric" /></div>
+            <div><Label>Sueldo por día</Label><Input type="number" value={salary} onChange={(e) => setSalary(Number(e.target.value))} className="font-numeric" /></div>
             <div><Label>Periodicidad</Label>
               <Select value={frequency} onValueChange={(v: any) => setFrequency(v)}><SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="weekly">Semanal</SelectItem><SelectItem value="monthly">Mensual</SelectItem></SelectContent>

@@ -25,11 +25,7 @@ export const Route = createFileRoute("/app/payroll")({
 });
 
 function dailyRateFromEmployee(emp: any) {
-  const salary = Number(emp?.salary || 0);
-  if (emp?.frequency === "daily") return salary;
-  if (emp?.frequency === "weekly") return Math.round((salary / 7) * 100) / 100;
-  if (emp?.frequency === "biweekly") return Math.round((salary / 15) * 100) / 100;
-  return Math.round((salary / 30) * 100) / 100;
+  return Number(emp?.salary || 0);
 }
 
 function labelFreq(f?: string | null) {
@@ -113,13 +109,13 @@ function MyPayrollPage() {
 
       <div className="grid grid-cols-3 gap-2">
         <Card className="p-3">
-          <p className="text-xs text-muted-foreground">Sueldo</p>
+          <p className="text-xs text-muted-foreground">Sueldo por día</p>
           <p className="text-lg font-bold font-numeric">{formatMoney(Number(emp.salary))}</p>
-          <p className="text-[11px] text-muted-foreground">{labelFreq(emp.frequency)}</p>
+          <p className="text-[11px] text-muted-foreground">base de cálculo</p>
         </Card>
         <Card className="p-3">
-          <p className="text-xs text-muted-foreground">Por día</p>
-          <p className="text-lg font-bold font-numeric">{formatMoney(dailyRate)}</p>
+          <p className="text-xs text-muted-foreground">Se paga</p>
+          <p className="text-lg font-bold">{labelFreq(emp.frequency)}</p>
         </Card>
         <Card className="p-3">
           <p className="text-xs text-muted-foreground">Este año</p>

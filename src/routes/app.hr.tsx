@@ -256,7 +256,7 @@ function HRPage() {
                       {loanBal && <Badge variant="outline" className="text-[10px]">Préstamo {formatMoney(loanBal)}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
-                      {e.position || "Sin puesto"} · {formatMoney(Number(e.salary))} {labelFreq(e.frequency)}{shiftCover ? " · 2 días/semana" : ""}
+                      {e.position || "Sin puesto"} · {formatMoney(Number(e.salary))} por día · pago {labelFreq(e.frequency)}{shiftCover ? " · 2 días/semana" : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0" onClick={(event) => event.stopPropagation()}>
@@ -325,9 +325,9 @@ function HRPage() {
             </div>
             <div><Label>Puesto</Label><Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} placeholder="Vendedora" disabled={form.kind === "shift_cover"} /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div><Label>Sueldo</Label><Input type="number" step="0.01" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></div>
+              <div><Label>Sueldo por día</Label><Input type="number" step="0.01" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></div>
               <div>
-                <Label>Frecuencia</Label>
+                <Label>Se paga</Label>
                 <Select value={form.frequency} onValueChange={(v) => setForm({ ...form, frequency: v })} disabled={form.kind === "shift_cover"}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -384,9 +384,9 @@ function HRPage() {
             </div>
             <div><Label>Puesto</Label><Input value={editForm.position} onChange={(e) => setEditForm({ ...editForm, position: e.target.value })} placeholder="Vendedora" disabled={editForm.kind === "shift_cover"} /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div><Label>Sueldo</Label><Input type="number" step="0.01" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} /></div>
+              <div><Label>Sueldo por día</Label><Input type="number" step="0.01" value={editForm.salary} onChange={(e) => setEditForm({ ...editForm, salary: e.target.value })} /></div>
               <div>
-                <Label>Frecuencia</Label>
+                <Label>Se paga</Label>
                 <Select value={editForm.frequency} onValueChange={(v) => setEditForm({ ...editForm, frequency: v })} disabled={editForm.kind === "shift_cover"}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>

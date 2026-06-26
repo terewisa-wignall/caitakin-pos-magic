@@ -358,12 +358,7 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
   const [open, setOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
   const today = new Date().toISOString().slice(0, 10);
-  const defaultDailyRate = String(
-    emp.frequency === "daily" ? Number(emp.salary || 0)
-    : emp.frequency === "weekly" ? Math.round((Number(emp.salary || 0) / 7) * 100) / 100
-    : emp.frequency === "biweekly" ? Math.round((Number(emp.salary || 0) / 15) * 100) / 100
-    : Math.round((Number(emp.salary || 0) / 30) * 100) / 100,
-  );
+  const defaultDailyRate = String(Number(emp.salary || 0));
   const [f, setF] = useState({
     period_start: today, period_end: today, paid_at: today,
     days_worked: "", daily_rate: defaultDailyRate, bonus_amount: "", severance_amount: "",
