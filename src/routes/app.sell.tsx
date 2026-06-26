@@ -59,6 +59,22 @@ async function uploadSaleDoc(userId: string, orderId: string, kind: "voucher" | 
   return path;
 }
 
+async function ensureOrderCommission(orderId: string, sellerId: string, total: number, orderCurrency: Currency) {
+  const { data: existing } = await supabase.from("commissions").select("id").eq("order_id", orderId).limit(1);
+  if ((existing ?? []).length > 0) return;
+  const { data: sellerProfile } = await supabase.from("profiles").select("commission_rate").eq("id", sellerId).maybeSingle();
+  const rate = Number(sellerProfile?.commission_rate ?? 5);
+  if (!Number.isFinite(rate) || rate <= 0) return;
+  const { error } = await supabase.from("commissions").insert({
+    seller_id: sellerId,
+    order_id: orderId,
+    commission_rate: rate,
+    commission_amount: Math.round((Number(total || 0) * rate / 100) * 100) / 100,
+    currency: orderCurrency,
+  });
+  if (error) console.warn("No se pudo crear la comisión de respaldo", error.message);
+}
+
 function SellPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -222,6 +238,7 @@ function SellPage() {
       }));
       const { error: payErr } = await supabase.from("payments").insert(paymentsToInsert);
       if (payErr) throw payErr;
+      await ensureOrderCommission(order.id, user.id, totalInCurrency, currency);
 
       const { data: ticket, error: tErr } = await supabase.from("tickets").insert({ order_id: order.id }).select("public_token").single();
       if (tErr || !ticket) throw tErr || new Error("No se pudo crear el ticket");
