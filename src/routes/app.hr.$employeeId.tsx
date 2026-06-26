@@ -50,6 +50,12 @@ function payPeriodsPerYear(schedule: string) {
   return { weekly: 52, biweekly: 24, monthly: 12, daily: 365 }[schedule] ?? 12;
 }
 
+function sellerCommissionRate(sellers: any[], profileId: string) {
+  if (profileId === "none") return "";
+  const seller = sellers.find((s: any) => s.id === profileId);
+  return seller?.commission_rate != null ? String(seller.commission_rate) : "";
+}
+
 function nextDateInYear(date?: string | null, asOfDate?: string | null) {
   if (!date) return null;
   const base = new Date(`${date}T00:00:00`);
@@ -151,6 +157,7 @@ function EmployeeDetail() {
 
 /* =================== GENERAL =================== */
 function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [f, setF] = useState({
     kind: isShiftCover(emp.position) ? "shift_cover" as EmployeeKind : "regular" as EmployeeKind,
     name: emp.name ?? "",
@@ -166,6 +173,7 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
     emergency_contact_name: emp.emergency_contact_name ?? "",
     emergency_contact_phone: emp.emergency_contact_phone ?? "",
     profile_id: emp.profile_id ?? "none",
+    commission_rate: "",
     is_active: emp.is_active,
   });
 
@@ -173,7 +181,7 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
     queryKey: ["hr-seller-profiles"],
     queryFn: async () => {
       const [{ data: profiles, error: profilesError }, { data: roles, error: rolesError }] = await Promise.all([
-        supabase.from("profiles").select("id,name,email,is_active").order("name"),
+        supabase.from("profiles").select("id,name,email,is_active,commission_rate").order("name"),
         supabase.from("user_roles").select("user_id,role").eq("role", "seller"),
       ]);
       if (profilesError) throw profilesError;
@@ -182,16 +190,28 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
       return (profiles ?? []).filter((p: any) => sellerIds.has(p.id));
     },
   });
+  const selectedCommissionRate = f.commission_rate || sellerCommissionRate(sellers, f.profile_id);
 
   const save = async () => {
     const payload: any = { ...f };
+    const commissionRate = Number(selectedCommissionRate);
+    if (f.profile_id !== "none" && (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100)) {
+      toast.error("Comisión inválida");
+      return;
+    }
     payload.position = f.kind === "shift_cover" ? SHIFT_COVER_POSITION : f.position || null;
     payload.profile_id = f.profile_id === "none" ? null : f.profile_id;
     delete payload.kind;
+    delete payload.commission_rate;
     ["birth_date", "hire_date", "termination_date"].forEach((k) => { if (!payload[k]) payload[k] = null; });
     const { error } = await supabase.from("employees").update(payload).eq("id", emp.id);
     if (error) { toast.error(error.message); return; }
+    if (f.profile_id !== "none") {
+      const { error: commissionError } = await supabase.from("profiles").update({ commission_rate: commissionRate }).eq("id", f.profile_id);
+      if (commissionError) { toast.error(commissionError.message); return; }
+    }
     toast.success("Guardado");
+    qc.invalidateQueries({ queryKey: ["hr-seller-profiles"] });
     onSaved();
   };
 
@@ -210,7 +230,7 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
         </div>
         <div>
           <Label>Usuario/vendedora</Label>
-          <Select value={f.profile_id} onValueChange={(v) => setF({ ...f, profile_id: v })}>
+          <Select value={f.profile_id} onValueChange={(v) => setF({ ...f, profile_id: v, commission_rate: sellerCommissionRate(sellers, v) })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">Sin vincular</SelectItem>
@@ -221,6 +241,19 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          <Label>Comisión de venta (%)</Label>
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={selectedCommissionRate}
+            onChange={(e) => setF({ ...f, commission_rate: e.target.value })}
+            placeholder="Ej. 5"
+            disabled={f.profile_id === "none"}
+          />
         </div>
         <div><Label>Nombre</Label><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><Label>Puesto</Label><Input value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} disabled={f.kind === "shift_cover"} /></div>

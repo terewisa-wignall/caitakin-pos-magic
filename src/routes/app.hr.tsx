@@ -34,15 +34,21 @@ function isShiftCover(position?: string | null) {
   return (position ?? "").trim().toLowerCase() === SHIFT_COVER_POSITION.toLowerCase();
 }
 
+function sellerCommissionRate(sellers: any[], profileId: string) {
+  if (profileId === "none") return "";
+  const seller = sellers.find((s: any) => s.id === profileId);
+  return seller?.commission_rate != null ? String(seller.commission_rate) : "";
+}
+
 function HRPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none" });
+  const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none", commission_rate: "" });
   const [editEmp, setEditEmp] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: "", is_active: true, profile_id: "none" });
+  const [editForm, setEditForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: "", is_active: true, profile_id: "none", commission_rate: "" });
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["hr-employees"],
@@ -87,7 +93,7 @@ function HRPage() {
     queryKey: ["hr-seller-profiles"],
     queryFn: async () => {
       const [{ data: profiles, error: profilesError }, { data: roles, error: rolesError }] = await Promise.all([
-        supabase.from("profiles").select("id,name,email,is_active").order("name"),
+        supabase.from("profiles").select("id,name,email,is_active,commission_rate").order("name"),
         supabase.from("user_roles").select("user_id,role").eq("role", "seller"),
       ]);
       if (profilesError) throw profilesError;
@@ -121,6 +127,11 @@ function HRPage() {
 
   const create = async () => {
     if (!form.name.trim()) { toast.error("Nombre requerido"); return; }
+    const commissionRate = Number(form.commission_rate);
+    if (form.profile_id !== "none" && (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100)) {
+      toast.error("Comisión inválida");
+      return;
+    }
     const shiftCover = form.kind === "shift_cover";
     const { error } = await supabase.from("employees").insert({
       name: form.name.trim(),
@@ -132,10 +143,15 @@ function HRPage() {
       is_active: true,
     });
     if (error) { toast.error(error.message); return; }
+    if (form.profile_id !== "none") {
+      const { error: commissionError } = await supabase.from("profiles").update({ commission_rate: commissionRate }).eq("id", form.profile_id);
+      if (commissionError) { toast.error(commissionError.message); return; }
+    }
     toast.success("Empleada agregada");
     setOpen(false);
-    setForm({ name: "", kind: "regular", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none" });
+    setForm({ name: "", kind: "regular", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none", commission_rate: "" });
     qc.invalidateQueries({ queryKey: ["hr-employees"] });
+    qc.invalidateQueries({ queryKey: ["hr-seller-profiles"] });
   };
 
   const openEdit = (employee: any) => {
@@ -150,12 +166,18 @@ function HRPage() {
       hire_date: employee.hire_date ?? "",
       is_active: Boolean(employee.is_active),
       profile_id: employee.profile_id ?? "none",
+      commission_rate: sellerCommissionRate(sellers, employee.profile_id ?? "none"),
     });
   };
 
   const updateEmployee = async () => {
     if (!editEmp) return;
     if (!editForm.name.trim()) { toast.error("Nombre requerido"); return; }
+    const commissionRate = Number(editForm.commission_rate);
+    if (editForm.profile_id !== "none" && (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100)) {
+      toast.error("Comisión inválida");
+      return;
+    }
     const shiftCover = editForm.kind === "shift_cover";
     const { error } = await supabase
       .from("employees")
@@ -170,9 +192,14 @@ function HRPage() {
       })
       .eq("id", editEmp.id);
     if (error) { toast.error(error.message); return; }
+    if (editForm.profile_id !== "none") {
+      const { error: commissionError } = await supabase.from("profiles").update({ commission_rate: commissionRate }).eq("id", editForm.profile_id);
+      if (commissionError) { toast.error(commissionError.message); return; }
+    }
     toast.success("Empleada actualizada");
     setEditEmp(null);
     qc.invalidateQueries({ queryKey: ["hr-employees"] });
+    qc.invalidateQueries({ queryKey: ["hr-seller-profiles"] });
   };
 
   const deleteEmployee = async (employee: any) => {
@@ -301,7 +328,7 @@ function HRPage() {
             <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div>
               <Label>Usuario/vendedora</Label>
-              <Select value={form.profile_id} onValueChange={(v) => setForm({ ...form, profile_id: v })}>
+              <Select value={form.profile_id} onValueChange={(v) => setForm({ ...form, profile_id: v, commission_rate: sellerCommissionRate(sellers, v) })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sin vincular</SelectItem>
@@ -312,6 +339,19 @@ function HRPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Comisión de venta (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={form.commission_rate}
+                onChange={(e) => setForm({ ...form, commission_rate: e.target.value })}
+                placeholder="Ej. 5"
+                disabled={form.profile_id === "none"}
+              />
             </div>
             <div>
               <Label>Tipo</Label>
@@ -360,7 +400,7 @@ function HRPage() {
             <div><Label>Nombre</Label><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></div>
             <div>
               <Label>Usuario/vendedora</Label>
-              <Select value={editForm.profile_id} onValueChange={(v) => setEditForm({ ...editForm, profile_id: v })}>
+              <Select value={editForm.profile_id} onValueChange={(v) => setEditForm({ ...editForm, profile_id: v, commission_rate: sellerCommissionRate(sellers, v) })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sin vincular</SelectItem>
@@ -371,6 +411,19 @@ function HRPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Comisión de venta (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={editForm.commission_rate}
+                onChange={(e) => setEditForm({ ...editForm, commission_rate: e.target.value })}
+                placeholder="Ej. 5"
+                disabled={editForm.profile_id === "none"}
+              />
             </div>
             <div>
               <Label>Tipo</Label>
