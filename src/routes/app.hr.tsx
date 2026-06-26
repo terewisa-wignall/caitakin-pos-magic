@@ -40,16 +40,16 @@ function HRPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none" });
   const [editEmp, setEditEmp] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: "", is_active: true });
+  const [editForm, setEditForm] = useState({ name: "", kind: "regular" as EmployeeKind, position: "", salary: "", frequency: "monthly", hire_date: "", is_active: true, profile_id: "none" });
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["hr-employees"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("employees")
-        .select("id,name,position,salary,frequency,is_active,hire_date,termination_date")
+        .select("id,name,position,salary,frequency,is_active,hire_date,termination_date,profile_id")
         .order("name");
       if (error) throw error;
       return data ?? [];
@@ -80,6 +80,20 @@ function HRPage() {
         .in("status", ["planned", "in_progress"]);
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  const { data: sellers = [] } = useQuery({
+    queryKey: ["hr-seller-profiles"],
+    queryFn: async () => {
+      const [{ data: profiles, error: profilesError }, { data: roles, error: rolesError }] = await Promise.all([
+        supabase.from("profiles").select("id,name,email,is_active").order("name"),
+        supabase.from("user_roles").select("user_id,role").eq("role", "seller"),
+      ]);
+      if (profilesError) throw profilesError;
+      if (rolesError) throw rolesError;
+      const sellerIds = new Set((roles ?? []).map((r: any) => r.user_id));
+      return (profiles ?? []).filter((p: any) => sellerIds.has(p.id));
     },
   });
 
@@ -114,12 +128,13 @@ function HRPage() {
       salary: Number(form.salary) || 0,
       frequency: (shiftCover ? "weekly" : form.frequency) as any,
       hire_date: form.hire_date || null,
+      profile_id: form.profile_id === "none" ? null : form.profile_id,
       is_active: true,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("Empleada agregada");
     setOpen(false);
-    setForm({ name: "", kind: "regular", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10) });
+    setForm({ name: "", kind: "regular", position: "", salary: "", frequency: "monthly", hire_date: new Date().toISOString().slice(0, 10), profile_id: "none" });
     qc.invalidateQueries({ queryKey: ["hr-employees"] });
   };
 
@@ -134,6 +149,7 @@ function HRPage() {
       frequency: shiftCover ? "weekly" : employee.frequency ?? "monthly",
       hire_date: employee.hire_date ?? "",
       is_active: Boolean(employee.is_active),
+      profile_id: employee.profile_id ?? "none",
     });
   };
 
@@ -149,6 +165,7 @@ function HRPage() {
         salary: Number(editForm.salary) || 0,
         frequency: (shiftCover ? "weekly" : editForm.frequency) as any,
         hire_date: editForm.hire_date || null,
+        profile_id: editForm.profile_id === "none" ? null : editForm.profile_id,
         is_active: editForm.is_active,
       })
       .eq("id", editEmp.id);
@@ -283,6 +300,20 @@ function HRPage() {
           <div className="space-y-3">
             <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div>
+              <Label>Usuario/vendedora</Label>
+              <Select value={form.profile_id} onValueChange={(v) => setForm({ ...form, profile_id: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin vincular</SelectItem>
+                  {sellers.map((seller: any) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name || seller.email} {!seller.is_active ? "(inactiva)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label>Tipo</Label>
               <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as EmployeeKind, position: v === "shift_cover" ? SHIFT_COVER_POSITION : "", frequency: v === "shift_cover" ? "weekly" : form.frequency })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -327,6 +358,20 @@ function HRPage() {
           <DialogHeader><DialogTitle>Editar empleada</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Nombre</Label><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></div>
+            <div>
+              <Label>Usuario/vendedora</Label>
+              <Select value={editForm.profile_id} onValueChange={(v) => setEditForm({ ...editForm, profile_id: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin vincular</SelectItem>
+                  {sellers.map((seller: any) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name || seller.email} {!seller.is_active ? "(inactiva)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Tipo</Label>
               <Select value={editForm.kind} onValueChange={(v) => setEditForm({ ...editForm, kind: v as EmployeeKind, position: v === "shift_cover" ? SHIFT_COVER_POSITION : "", frequency: v === "shift_cover" ? "weekly" : editForm.frequency })}>

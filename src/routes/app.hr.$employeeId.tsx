@@ -129,12 +129,28 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
     rfc: emp.rfc ?? "",
     emergency_contact_name: emp.emergency_contact_name ?? "",
     emergency_contact_phone: emp.emergency_contact_phone ?? "",
+    profile_id: emp.profile_id ?? "none",
     is_active: emp.is_active,
+  });
+
+  const { data: sellers = [] } = useQuery({
+    queryKey: ["hr-seller-profiles"],
+    queryFn: async () => {
+      const [{ data: profiles, error: profilesError }, { data: roles, error: rolesError }] = await Promise.all([
+        supabase.from("profiles").select("id,name,email,is_active").order("name"),
+        supabase.from("user_roles").select("user_id,role").eq("role", "seller"),
+      ]);
+      if (profilesError) throw profilesError;
+      if (rolesError) throw rolesError;
+      const sellerIds = new Set((roles ?? []).map((r: any) => r.user_id));
+      return (profiles ?? []).filter((p: any) => sellerIds.has(p.id));
+    },
   });
 
   const save = async () => {
     const payload: any = { ...f };
     payload.position = f.kind === "shift_cover" ? SHIFT_COVER_POSITION : f.position || null;
+    payload.profile_id = f.profile_id === "none" ? null : f.profile_id;
     delete payload.kind;
     ["birth_date", "hire_date", "termination_date"].forEach((k) => { if (!payload[k]) payload[k] = null; });
     const { error } = await supabase.from("employees").update(payload).eq("id", emp.id);
@@ -153,6 +169,20 @@ function GeneralTab({ emp, onSaved }: { emp: any; onSaved: () => void }) {
             <SelectContent>
               <SelectItem value="regular">Regular</SelectItem>
               <SelectItem value="shift_cover">Cubre turnos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Usuario/vendedora</Label>
+          <Select value={f.profile_id} onValueChange={(v) => setF({ ...f, profile_id: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sin vincular</SelectItem>
+              {sellers.map((seller: any) => (
+                <SelectItem key={seller.id} value={seller.id}>
+                  {seller.name || seller.email} {!seller.is_active ? "(inactiva)" : ""}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
