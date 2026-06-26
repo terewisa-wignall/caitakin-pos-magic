@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   TrendingUp, TrendingDown, Users, Coins, Lock, Plus,
-  ChevronLeft, ChevronRight, Briefcase, FileBarChart, Pencil, Trash2,
+  ChevronLeft, ChevronRight, Briefcase, FileBarChart, Pencil, Trash2, CheckCircle2,
 } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
@@ -389,11 +389,31 @@ function OtherIncomeDialog({ open, onClose, income }: { open: boolean; onClose: 
 
 /* ---------------- Gastos ---------------- */
 
+function templateDueDate(t: any, year: number, month: number) {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(Math.min(Number(t.due_day || 1), lastDay)).padStart(2, "0")}`;
+}
+
+function isTemplateDueThisMonth(t: any, year: number, month: number) {
+  if (!t.is_active) return false;
+  if (t.frequency === "monthly") return true;
+  if (t.frequency === "bimonthly") {
+    const created = t.created_at ? new Date(t.created_at) : new Date(year, 0, 1);
+    const monthsSince = (year - created.getFullYear()) * 12 + (month - created.getMonth());
+    return monthsSince >= 0 && monthsSince % 2 === 0;
+  }
+  return true;
+}
+
 function ExpensesTab({ year, month }: { year: number; month: number }) {
   const { startDate, endDate } = monthRange(year, month);
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
+  const [openTemplate, setOpenTemplate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [payingTemplate, setPayingTemplate] = useState<any | null>(null);
   const [filter, setFilter] = useState<"all" | "fixed" | "variable" | "unexpected">("all");
 
   const q = useQuery({
@@ -401,11 +421,20 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
     queryFn: async () => (await (supabase.from as any)("expenses").select("*").gte("expense_date", startDate).lte("expense_date", endDate).order("expense_date", { ascending: false })).data ?? [],
   });
 
+  const templates = useQuery({
+    queryKey: ["finance-expense-templates"],
+    queryFn: async () => (await (supabase.from as any)("expense_templates").select("*").order("concept")).data ?? [],
+  });
+
   const visible = (q.data ?? []).filter((e: any) => filter === "all" || e.type === filter);
   const total = visible.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const dueTemplates = (templates.data ?? []).filter((t: any) => isTemplateDueThisMonth(t, year, month));
+  const paidByTemplate = new Map((q.data ?? []).filter((e: any) => e.recurring_template_id).map((e: any) => [e.recurring_template_id, e]));
+  const unpaidTemplates = dueTemplates.filter((t: any) => !paidByTemplate.has(t.id));
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["finance-expenses"] });
+    qc.invalidateQueries({ queryKey: ["finance-expense-templates"] });
     qc.invalidateQueries({ queryKey: ["finance-totals"] });
     qc.invalidateQueries({ queryKey: ["finance-yearly"] });
   };
@@ -426,6 +455,28 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
     bimonthly: "Bimestral",
   };
 
+  const markTemplatePaid = async (template: any, amount: number) => {
+    if (!amount || amount < 0) { toast.error("Monto inválido"); return; }
+    const { error } = await (supabase.from as any)("expenses").insert({
+      concept: template.concept,
+      amount,
+      currency: template.currency,
+      type: template.type,
+      category: template.category,
+      expense_date: templateDueDate(template, year, month),
+      payment_method: template.payment_method,
+      note: template.note,
+      is_recurring: false,
+      recurring_frequency: null,
+      recurring_template_id: template.id,
+      created_by: user?.id,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Gasto marcado como pagado");
+    setPayingTemplate(null);
+    refresh();
+  };
+
   return (
     <div className="space-y-3">
       <Card className="p-4 flex items-center justify-between gap-2 flex-wrap">
@@ -433,7 +484,48 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
           <p className="text-xs text-muted-foreground">Total filtrado</p>
           <p className="text-2xl font-bold font-numeric text-destructive">{formatMoney(total)}</p>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo gasto</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setOpenTemplate(true)}><Plus className="h-4 w-4 mr-1" /> Gasto recurrente</Button>
+          <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo gasto</Button>
+        </div>
+      </Card>
+
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <p className="font-semibold">Lista de pagos recurrentes</p>
+            <p className="text-xs text-muted-foreground">Marca pagado cada mes; si el monto varía, capturas el monto real.</p>
+          </div>
+          <Badge variant="outline">{unpaidTemplates.length} pendientes</Badge>
+        </div>
+        <div className="grid gap-2">
+          {dueTemplates.map((t: any) => {
+            const paid = paidByTemplate.get(t.id);
+            return (
+              <div key={t.id} className="border rounded-lg p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium truncate">{t.concept}</p>
+                    <Badge variant={paid ? "default" : "outline"} className="text-[10px] py-0">{paid ? "Pagado" : "Pendiente"}</Badge>
+                    <Badge variant="secondary" className="text-[10px] py-0">{t.is_variable ? "Monto variable" : "Monto fijo"}</Badge>
+                    <Badge variant="outline" className="text-[10px] py-0">{recurrenceLabels[t.frequency] || t.frequency}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Vence {formatDateShort(templateDueDate(t, year, month))} · {t.category || "—"} · {t.payment_method || "—"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <p className={`font-numeric font-semibold ${paid ? "" : "text-destructive"}`}>
+                    {formatMoney(Number(paid?.amount ?? t.default_amount), t.currency)}
+                  </p>
+                  {!paid && <Button size="sm" onClick={() => setPayingTemplate(t)}><CheckCircle2 className="h-4 w-4 mr-1" /> Pagado</Button>}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTemplate(t)}><Pencil className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            );
+          })}
+          {dueTemplates.length === 0 && <p className="text-center text-sm text-muted-foreground py-4">Sin pagos recurrentes para este mes</p>}
+        </div>
       </Card>
 
       <div className="flex gap-1.5 flex-wrap">
@@ -473,6 +565,9 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
 
       <ExpenseDialog open={open} onClose={() => { setOpen(false); refresh(); }} />
       <ExpenseDialog expense={editing} open={!!editing} onClose={() => { setEditing(null); refresh(); }} />
+      <ExpenseTemplateDialog open={openTemplate} onClose={() => { setOpenTemplate(false); refresh(); }} />
+      <ExpenseTemplateDialog template={editingTemplate} open={!!editingTemplate} onClose={() => { setEditingTemplate(null); refresh(); }} />
+      <PayTemplateDialog template={payingTemplate} onClose={() => setPayingTemplate(null)} onPay={markTemplatePaid} />
     </div>
   );
 }
@@ -587,6 +682,149 @@ function ExpenseDialog({ open, onClose, expense }: { open: boolean; onClose: () 
           <div><Label>Nota</Label><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></div>
         </div>
         <DialogFooter><Button onClick={submit} disabled={saving} className="w-full">{saving ? "Guardando..." : "Guardar"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ExpenseTemplateDialog({ open, onClose, template }: { open: boolean; onClose: () => void; template?: any | null }) {
+  const { user } = useAuth();
+  const [concept, setConcept] = useState("");
+  const [defaultAmount, setDefaultAmount] = useState(0);
+  const [isVariable, setIsVariable] = useState(false);
+  const [currency, setCurrency] = useState("MXN");
+  const [type, setType] = useState<"fixed" | "variable" | "unexpected">("fixed");
+  const [category, setCategory] = useState("");
+  const [method, setMethod] = useState("transfer");
+  const [frequency, setFrequency] = useState<"weekly" | "biweekly" | "monthly" | "bimonthly">("monthly");
+  const [dueDay, setDueDay] = useState(1);
+  const [isActive, setIsActive] = useState(true);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setConcept(template?.concept ?? "");
+    setDefaultAmount(Number(template?.default_amount ?? 0));
+    setIsVariable(Boolean(template?.is_variable));
+    setCurrency(template?.currency ?? "MXN");
+    setType(template?.type ?? "fixed");
+    setCategory(template?.category ?? "");
+    setMethod(template?.payment_method ?? "transfer");
+    setFrequency(template?.frequency ?? "monthly");
+    setDueDay(Number(template?.due_day ?? 1));
+    setIsActive(template?.is_active ?? true);
+    setNote(template?.note ?? "");
+  }, [open, template]);
+
+  const submit = async () => {
+    if (!concept.trim()) { toast.error("Concepto requerido"); return; }
+    if (dueDay < 1 || dueDay > 31) { toast.error("Día de pago inválido"); return; }
+    setSaving(true);
+    const payload = {
+      concept: concept.trim(),
+      default_amount: Number(defaultAmount) || 0,
+      is_variable: isVariable,
+      currency,
+      type,
+      category: category || null,
+      payment_method: method,
+      frequency,
+      due_day: dueDay,
+      is_active: isActive,
+      note: note || null,
+      created_by: user?.id,
+    };
+    const { error } = template?.id
+      ? await (supabase.from as any)("expense_templates").update(payload).eq("id", template.id)
+      : await (supabase.from as any)("expense_templates").insert(payload);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(template?.id ? "Recurrente actualizado" : "Recurrente creado");
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{template?.id ? "Editar gasto recurrente" : "Nuevo gasto recurrente"}</DialogTitle></DialogHeader>
+        <div className="space-y-3 max-h-[65vh] overflow-y-auto">
+          <div><Label>Concepto</Label><Input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej. Telmex, impuestos, comisiones" /></div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Monto base</Label><Input type="number" value={defaultAmount} onChange={(e) => setDefaultAmount(Number(e.target.value))} /></div>
+            <div><Label>Moneda</Label>
+              <Select value={currency} onValueChange={setCurrency}><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between border rounded-lg p-3">
+            <div><p className="text-sm font-medium">Monto variable</p><p className="text-xs text-muted-foreground">Para impuestos, comisiones u otros que cambian cada mes</p></div>
+            <Switch checked={isVariable} onCheckedChange={setIsVariable} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Tipo</Label>
+              <Select value={type} onValueChange={(v: any) => setType(v)}><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="fixed">Fijo</SelectItem><SelectItem value="variable">Variable</SelectItem><SelectItem value="unexpected">Imprevisto</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div><Label>Categoría</Label><Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Servicios, impuestos..." /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Periodicidad</Label>
+              <Select value={frequency} onValueChange={(v: any) => setFrequency(v)}><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">Semanal</SelectItem>
+                  <SelectItem value="biweekly">Quincenal</SelectItem>
+                  <SelectItem value="monthly">Mensual</SelectItem>
+                  <SelectItem value="bimonthly">Bimestral</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Día de pago</Label><Input type="number" min="1" max="31" value={dueDay} onChange={(e) => setDueDay(Number(e.target.value))} /></div>
+          </div>
+          <div><Label>Método</Label>
+            <Select value={method} onValueChange={setMethod}><SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Efectivo</SelectItem><SelectItem value="transfer">Transferencia</SelectItem>
+                <SelectItem value="debit_card">Débito</SelectItem><SelectItem value="credit_card">Crédito</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label>Nota</Label><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></div>
+          <div className="flex items-center gap-2">
+            <Switch checked={isActive} onCheckedChange={setIsActive} id="expense-template-active" />
+            <Label htmlFor="expense-template-active">Activo</Label>
+          </div>
+        </div>
+        <DialogFooter><Button onClick={submit} disabled={saving} className="w-full">{saving ? "Guardando..." : "Guardar recurrente"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PayTemplateDialog({ template, onClose, onPay }: { template: any | null; onClose: () => void; onPay: (template: any, amount: number) => void }) {
+  const [amount, setAmount] = useState(0);
+
+  useEffect(() => {
+    if (template) setAmount(Number(template.default_amount || 0));
+  }, [template]);
+
+  return (
+    <Dialog open={!!template} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Marcar como pagado</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <Card className="p-3">
+            <p className="font-medium">{template?.concept}</p>
+            <p className="text-xs text-muted-foreground">{template?.is_variable ? "Captura el monto real pagado" : "Confirma el monto fijo"}</p>
+          </Card>
+          <div><Label>Monto pagado</Label><Input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} className="font-numeric" /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => template && onPay(template, amount)}>Guardar pago</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
