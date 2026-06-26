@@ -24,11 +24,12 @@ function isShiftCover(position?: string | null) {
   return (position ?? "").trim().toLowerCase() === SHIFT_COVER_POSITION.toLowerCase();
 }
 
-function vacationEntitlementFromHireDate(hireDate?: string | null) {
+function vacationEntitlementFromHireDate(hireDate?: string | null, asOfDate?: string | null) {
   if (!hireDate) return { years: 0, days: 0, anniversary: null as string | null };
   const start = new Date(`${hireDate}T00:00:00`);
   if (Number.isNaN(start.getTime())) return { years: 0, days: 0, anniversary: null as string | null };
-  const now = new Date();
+  const now = asOfDate ? new Date(`${asOfDate}T00:00:00`) : new Date();
+  if (Number.isNaN(now.getTime())) return { years: 0, days: 0, anniversary: null as string | null };
   let years = now.getFullYear() - start.getFullYear();
   const anniversaryThisYear = new Date(now.getFullYear(), start.getMonth(), start.getDate());
   if (now < anniversaryThisYear) years -= 1;
@@ -47,6 +48,16 @@ function vacationEntitlementFromHireDate(hireDate?: string | null) {
 
 function payPeriodsPerYear(schedule: string) {
   return { weekly: 52, biweekly: 24, monthly: 12, daily: 365 }[schedule] ?? 12;
+}
+
+function nextDateInYear(date?: string | null, asOfDate?: string | null) {
+  if (!date) return null;
+  const base = new Date(`${date}T00:00:00`);
+  const asOf = asOfDate ? new Date(`${asOfDate}T00:00:00`) : new Date();
+  if (Number.isNaN(base.getTime()) || Number.isNaN(asOf.getTime())) return null;
+  let next = new Date(asOf.getFullYear(), base.getMonth(), base.getDate());
+  if (next < asOf) next = new Date(asOf.getFullYear() + 1, base.getMonth(), base.getDate());
+  return next.toISOString().slice(0, 10);
 }
 
 export const Route = createFileRoute("/app/hr/$employeeId")({
@@ -384,6 +395,8 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
   const [receipt, setReceipt] = useState<any | null>(null);
   const [severanceSchedule, setSeveranceSchedule] = useState<"monthly" | "biweekly" | "weekly">("monthly");
   const today = new Date().toISOString().slice(0, 10);
+  const [severanceAsOf, setSeveranceAsOf] = useState(today);
+  const [severanceMonths, setSeveranceMonths] = useState("1");
   const defaultDailyRate = String(Number(emp.salary || 0));
   const [f, setF] = useState({
     period_start: today, period_end: today, paid_at: today,
@@ -425,7 +438,7 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
   const severance = Number(f.severance_amount) || 0;
   const grossPreview = salaryBase + bonus + severance;
   const netPreview = Math.max(0, grossPreview - (Number(f.imss_deduction) || 0) - (Number(f.infonavit_deduction) || 0) - (Number(f.loan_deduction) || 0));
-  const vacationInfo = vacationEntitlementFromHireDate(emp.hire_date);
+  const vacationInfo = vacationEntitlementFromHireDate(emp.hire_date, severanceAsOf);
   const dailyRate = Number(emp.salary || 0);
   const annualAguinaldo = dailyRate * 15;
   const annualVacationPremium = dailyRate * vacationInfo.days * 1.25;
@@ -434,9 +447,9 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
   const vacationPremiumPerPeriod = annualVacationPremium / periods;
   const severancePerPeriod = aguinaldoPerPeriod + vacationPremiumPerPeriod;
   const monthlySeverance = annualAguinaldo / 12 + annualVacationPremium / 12;
-  const nextBirthday = emp.birth_date
-    ? new Date(new Date().getFullYear(), new Date(`${emp.birth_date}T00:00:00`).getMonth(), new Date(`${emp.birth_date}T00:00:00`).getDate()).toISOString().slice(0, 10)
-    : null;
+  const monthsToPay = Math.max(1, Number(severanceMonths) || 1);
+  const monthlyContractSeverance = monthlySeverance * monthsToPay;
+  const nextBirthday = nextDateInYear(emp.birth_date, severanceAsOf);
 
   const save = async () => {
     const gross = grossPreview || Number(f.gross_amount) || 0;
@@ -489,18 +502,17 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="font-semibold">Calculadora de finiquito</h2>
-            <p className="text-xs text-muted-foreground">Aguinaldo 15 días + vacaciones con prima 25%, prorrateado por periodo.</p>
+            <p className="text-xs text-muted-foreground">Contrato mensual calculado con la antigüedad real de la empleada a la fecha de corte.</p>
           </div>
-          <div className="sm:w-44">
-            <Label>Calcular como</Label>
-            <Select value={severanceSchedule} onValueChange={(v: any) => setSeveranceSchedule(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Mensual</SelectItem>
-                <SelectItem value="biweekly">Quincenal</SelectItem>
-                <SelectItem value="weekly">Semanal</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-2 sm:w-[23rem]">
+            <div>
+              <Label>Fecha de corte</Label>
+              <Input type="date" value={severanceAsOf} onChange={(e) => setSeveranceAsOf(e.target.value)} />
+            </div>
+            <div>
+              <Label>Meses a pagar</Label>
+              <Input type="number" min="1" step="1" value={severanceMonths} onChange={(e) => setSeveranceMonths(e.target.value)} />
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
@@ -519,9 +531,9 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
             <p className="text-[11px] text-muted-foreground">{vacationInfo.days} días + 25%</p>
           </div>
           <div className="border rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Finiquito {labelSched(severanceSchedule).toLowerCase()}</p>
-            <p className="font-semibold text-primary">{formatMoney(severancePerPeriod)}</p>
-            <p className="text-[11px] text-muted-foreground">Mensual: {formatMoney(monthlySeverance)}</p>
+            <p className="text-xs text-muted-foreground">Finiquito contrato mensual</p>
+            <p className="font-semibold text-primary">{formatMoney(monthlyContractSeverance)}</p>
+            <p className="text-[11px] text-muted-foreground">{monthsToPay} mes(es) · mensual {formatMoney(monthlySeverance)}</p>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -530,15 +542,39 @@ function PayrollTab({ employeeId, emp }: { employeeId: string; emp: any }) {
           <div><span className="text-muted-foreground">Aniversario: </span>{vacationInfo.anniversary ? formatDateShort(vacationInfo.anniversary) : "—"}</div>
           <div><span className="text-muted-foreground">Cumpleaños: </span>{nextBirthday ? formatDateShort(nextBirthday) : "—"}</div>
         </div>
+        <Card className="p-3 bg-muted/40 text-xs space-y-1">
+          <p className="font-medium">Fórmula usada</p>
+          <p>Aguinaldo: {formatMoney(dailyRate)} x 15 días = {formatMoney(annualAguinaldo)} al año.</p>
+          <p>Vacaciones: {vacationInfo.days} días por {vacationInfo.years} año(s) de antigüedad x {formatMoney(dailyRate)} + 25% prima = {formatMoney(annualVacationPremium)} al año.</p>
+          <p>Contrato mensual: (aguinaldo anual + vacaciones/prima anual) / 12 x meses a pagar.</p>
+        </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          <div>
+            <Label>Ver también como referencia</Label>
+            <Select value={severanceSchedule} onValueChange={(v: any) => setSeveranceSchedule(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Mensual</SelectItem>
+                <SelectItem value="biweekly">Quincenal</SelectItem>
+                <SelectItem value="weekly">Semanal</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">{labelSched(severanceSchedule)}: {formatMoney(severancePerPeriod)}</p>
+          </div>
+        </div>
         <Button
           size="sm"
           variant="outline"
           onClick={() => {
-            setF((prev) => ({ ...prev, severance_amount: String(Math.round(severancePerPeriod * 100) / 100) }));
+            setF((prev) => ({
+              ...prev,
+              severance_amount: String(Math.round(monthlyContractSeverance * 100) / 100),
+              note: prev.note || `Finiquito contrato mensual: ${monthsToPay} mes(es), corte ${severanceAsOf}`,
+            }));
             setOpen(true);
           }}
         >
-          Usar este finiquito en pago
+          Usar finiquito mensual en pago
         </Button>
       </Card>
       {payments.length === 0 ? (
