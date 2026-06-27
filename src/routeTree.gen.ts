@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as TTokenRouteImport } from './routes/t.$token'
 import { Route as AppUsersRouteImport } from './routes/app.users'
+import { Route as AppSuppliersRouteImport } from './routes/app.suppliers'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppSellRouteImport } from './routes/app.sell'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
@@ -56,6 +57,11 @@ const TTokenRoute = TTokenRouteImport.update({
 const AppUsersRoute = AppUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSuppliersRoute = AppSuppliersRouteImport.update({
+  id: '/suppliers',
+  path: '/suppliers',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/suppliers': typeof AppSuppliersRoute
   '/app/users': typeof AppUsersRoute
   '/t/$token': typeof TTokenRoute
   '/app/': typeof AppIndexRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/suppliers': typeof AppSuppliersRoute
   '/app/users': typeof AppUsersRoute
   '/t/$token': typeof TTokenRoute
   '/app': typeof AppIndexRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/app/reports': typeof AppReportsRoute
   '/app/sell': typeof AppSellRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/suppliers': typeof AppSuppliersRoute
   '/app/users': typeof AppUsersRoute
   '/t/$token': typeof TTokenRoute
   '/app/': typeof AppIndexRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/sell'
     | '/app/settings'
+    | '/app/suppliers'
     | '/app/users'
     | '/t/$token'
     | '/app/'
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/sell'
     | '/app/settings'
+    | '/app/suppliers'
     | '/app/users'
     | '/t/$token'
     | '/app'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/sell'
     | '/app/settings'
+    | '/app/suppliers'
     | '/app/users'
     | '/t/$token'
     | '/app/'
@@ -290,6 +302,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/app/users'
       preLoaderRoute: typeof AppUsersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/suppliers': {
+      id: '/app/suppliers'
+      path: '/suppliers'
+      fullPath: '/app/suppliers'
+      preLoaderRoute: typeof AppSuppliersRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/settings': {
@@ -412,6 +431,7 @@ interface AppRouteChildren {
   AppReportsRoute: typeof AppReportsRoute
   AppSellRoute: typeof AppSellRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppSuppliersRoute: typeof AppSuppliersRoute
   AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -427,6 +447,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportsRoute: AppReportsRoute,
   AppSellRoute: AppSellRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppSuppliersRoute: AppSuppliersRoute,
   AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
 }

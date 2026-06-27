@@ -1096,6 +1096,138 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_products: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          inventory_product_id: string | null
+          is_available: boolean
+          last_quoted_at: string | null
+          lead_time_days: number | null
+          min_order_qty: number | null
+          name: string
+          notes: string | null
+          supplier_id: string
+          supplier_sku: string | null
+          unit_cost: number
+          updated_at: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          inventory_product_id?: string | null
+          is_available?: boolean
+          last_quoted_at?: string | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
+          name: string
+          notes?: string | null
+          supplier_id: string
+          supplier_sku?: string | null
+          unit_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          inventory_product_id?: string | null
+          is_available?: boolean
+          last_quoted_at?: string | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
+          name?: string
+          notes?: string | null
+          supplier_id?: string
+          supplier_sku?: string | null
+          unit_cost?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_inventory_product_id_fkey"
+            columns: ["inventory_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          category_id: string | null
+          classification_name: string | null
+          contact_name: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          location: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          category_id?: string | null
+          classification_name?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string | null
+          classification_name?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shift_handoffs: {
         Row: {
           accepted_at: string | null
