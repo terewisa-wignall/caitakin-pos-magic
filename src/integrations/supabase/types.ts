@@ -1175,6 +1175,69 @@ export type Database = {
           },
         ]
       }
+      supplier_lists: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          external_url: string | null
+          file_name: string | null
+          file_path: string | null
+          id: string
+          mime_type: string | null
+          note: string | null
+          size_bytes: number | null
+          source_type: string
+          supplier_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          external_url?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          id?: string
+          mime_type?: string | null
+          note?: string | null
+          size_bytes?: number | null
+          source_type?: string
+          supplier_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          external_url?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          id?: string
+          mime_type?: string | null
+          note?: string | null
+          size_bytes?: number | null
+          source_type?: string
+          supplier_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_lists_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_lists_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           category_id: string | null

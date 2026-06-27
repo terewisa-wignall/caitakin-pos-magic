@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit2, PackagePlus, Plus, Search, Trash2, Truck } from "lucide-react";
+import { Edit2, ExternalLink, FileText, Image, LinkIcon, PackagePlus, Plus, Search, Trash2, Truck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -54,6 +54,19 @@ type SupplierProduct = {
   products: { name: string; base_price_mxn: number } | null;
 };
 type InventoryOption = { id: string; name: string; base_price_mxn: number };
+type SupplierList = {
+  id: string;
+  supplier_id: string;
+  title: string;
+  source_type: "file" | "google_sheets" | "link";
+  file_path: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  external_url: string | null;
+  note: string | null;
+  created_at: string;
+};
 
 function SuppliersPage() {
   const { isAdmin } = useAuth();
@@ -63,6 +76,7 @@ function SuppliersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [supplierDialog, setSupplierDialog] = useState<Supplier | null | "new">(null);
   const [productDialog, setProductDialog] = useState<SupplierProduct | null | "new">(null);
+  const [listDialog, setListDialog] = useState<SupplierList | null | "new">(null);
 
   const categories = useQuery<Category[]>({
     queryKey: ["categories"],
@@ -97,6 +111,21 @@ function SuppliersPage() {
         .order("name");
       if (error) throw error;
       return (data ?? []) as SupplierProduct[];
+    },
+    enabled: isAdmin && !!selectedId,
+  });
+
+  const supplierLists = useQuery<SupplierList[]>({
+    queryKey: ["supplier-lists", selectedId],
+    queryFn: async () => {
+      if (!selectedId) return [];
+      const { data, error } = await supabase
+        .from("supplier_lists")
+        .select("*")
+        .eq("supplier_id", selectedId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as SupplierList[];
     },
     enabled: isAdmin && !!selectedId,
   });
@@ -150,6 +179,31 @@ function SuppliersPage() {
       toast.success("Producto borrado");
       qc.invalidateQueries({ queryKey: ["supplier-products", selectedId] });
     }
+  };
+
+  const openList = async (list: SupplierList) => {
+    if (list.external_url) {
+      window.open(list.external_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!list.file_path) return;
+    const { data, error } = await supabase.storage
+      .from("supplier-lists")
+      .createSignedUrl(list.file_path, 60 * 5);
+    if (error || !data?.signedUrl) toast.error(error?.message ?? "No se pudo abrir la lista");
+    else window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const deleteList = async (list: SupplierList) => {
+    if (!confirm(`¿Borrar la lista ${list.title}?`)) return;
+    const { error } = await supabase.from("supplier_lists").delete().eq("id", list.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (list.file_path) await supabase.storage.from("supplier-lists").remove([list.file_path]);
+    toast.success("Lista borrada");
+    qc.invalidateQueries({ queryKey: ["supplier-lists", selectedId] });
   };
 
   if (!isAdmin) {
@@ -285,6 +339,69 @@ function SuppliersPage() {
               </Card>
 
               <Card className="overflow-hidden">
+                <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold">Listas del proveedor</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Fotos, PDFs o links de Google Sheets con precios y catálogos.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setListDialog("new")}>
+                    <Upload className="h-4 w-4 mr-2" /> Agregar lista
+                  </Button>
+                </div>
+                <div className="divide-y">
+                  {(supplierLists.data ?? []).map((list) => {
+                    const Icon = list.source_type === "google_sheets"
+                      ? LinkIcon
+                      : list.mime_type?.startsWith("image/")
+                        ? Image
+                        : FileText;
+                    return (
+                      <div key={list.id} className="grid gap-3 p-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                          <Icon className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">{list.title}</p>
+                            <Badge variant="secondary">{listLabel(list)}</Badge>
+                          </div>
+                          <p className="truncate text-sm text-muted-foreground">
+                            {list.file_name || list.external_url || "Sin archivo"}
+                            {list.size_bytes ? ` · ${formatBytes(list.size_bytes)}` : ""}
+                          </p>
+                          {list.note && <p className="mt-1 text-sm">{list.note}</p>}
+                        </div>
+                        <div className="flex gap-1 md:justify-end">
+                          <Button size="icon" variant="ghost" onClick={() => openList(list)} aria-label={`Abrir ${list.title}`}>
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setListDialog(list)} aria-label={`Editar ${list.title}`}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => deleteList(list)}
+                            aria-label={`Borrar ${list.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {(supplierLists.data ?? []).length === 0 && (
+                    <div className="p-8 text-center text-muted-foreground">
+                      Aún no hay listas guardadas.
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
                 <div className="border-b p-4">
                   <h3 className="font-semibold">Lista de productos y costos</h3>
                   <p className="text-sm text-muted-foreground">
@@ -376,6 +493,13 @@ function SuppliersPage() {
         onClose={() => setProductDialog(null)}
         onSaved={() => qc.invalidateQueries({ queryKey: ["supplier-products", selectedId] })}
       />
+      <SupplierListDialog
+        open={listDialog !== null && !!selectedSupplier}
+        list={listDialog === "new" ? null : listDialog}
+        supplierId={selectedSupplier?.id ?? ""}
+        onClose={() => setListDialog(null)}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["supplier-lists", selectedId] })}
+      />
     </div>
   );
 }
@@ -387,6 +511,19 @@ function Info({ label, value }: { label: string; value: string | null }) {
       <p className="truncate text-sm font-medium">{value || "—"}</p>
     </div>
   );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function listLabel(list: SupplierList) {
+  if (list.source_type === "google_sheets") return "Google Sheets";
+  if (list.mime_type?.startsWith("image/")) return "Foto";
+  if (list.mime_type === "application/pdf") return "PDF";
+  return list.source_type === "link" ? "Link" : "Archivo";
 }
 
 function SupplierDialog({
@@ -517,6 +654,186 @@ function SupplierDialog({
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={save}>Guardar</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SupplierListDialog({
+  open,
+  list,
+  supplierId,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  list: SupplierList | null;
+  supplierId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { user } = useAuth();
+  const [form, setForm] = useState({
+    title: "",
+    source_type: "file" as SupplierList["source_type"],
+    external_url: "",
+    note: "",
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setFile(null);
+    setForm({
+      title: list?.title ?? "",
+      source_type: list?.source_type ?? "file",
+      external_url: list?.external_url ?? "",
+      note: list?.note ?? "",
+    });
+  }, [open, list]);
+
+  const save = async () => {
+    const title = form.title.trim();
+    if (!title) {
+      toast.error("Ponle nombre a la lista");
+      return;
+    }
+    if (form.source_type === "file" && !file && !list?.file_path) {
+      toast.error("Sube una foto o PDF");
+      return;
+    }
+    if (form.source_type !== "file" && !form.external_url.trim()) {
+      toast.error("Pega el link");
+      return;
+    }
+    if (form.source_type === "google_sheets" && !form.external_url.includes("docs.google.com/spreadsheets")) {
+      toast.error("Ese link no parece ser de Google Sheets");
+      return;
+    }
+    if (file && !file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast.error("Solo acepta fotos o PDF");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let filePath = list?.file_path ?? null;
+      let fileName = list?.file_name ?? null;
+      let mimeType = list?.mime_type ?? null;
+      let sizeBytes = list?.size_bytes ?? null;
+
+      if (form.source_type === "file" && file) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+        const path = `${supplierId}/${crypto.randomUUID()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage
+          .from("supplier-lists")
+          .upload(path, file, { upsert: false });
+        if (uploadError) throw uploadError;
+        if (list?.file_path) await supabase.storage.from("supplier-lists").remove([list.file_path]);
+        filePath = path;
+        fileName = file.name;
+        mimeType = file.type || null;
+        sizeBytes = file.size;
+      }
+
+      const payload = {
+        supplier_id: supplierId,
+        title,
+        source_type: form.source_type,
+        file_path: form.source_type === "file" ? filePath : null,
+        file_name: form.source_type === "file" ? fileName : null,
+        mime_type: form.source_type === "file" ? mimeType : null,
+        size_bytes: form.source_type === "file" ? sizeBytes : null,
+        external_url: form.source_type === "file" ? null : form.external_url.trim(),
+        note: form.note.trim() || null,
+        created_by: list ? undefined : user?.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      const result = list
+        ? await supabase.from("supplier_lists").update(payload).eq("id", list.id)
+        : await supabase.from("supplier_lists").insert(payload);
+      if (result.error) throw result.error;
+      if (list?.file_path && form.source_type !== "file") {
+        await supabase.storage.from("supplier-lists").remove([list.file_path]);
+      }
+      toast.success(list ? "Lista actualizada" : "Lista guardada");
+      onSaved();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{list ? "Editar lista" : "Agregar lista"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Nombre de la lista</Label>
+            <Input
+              value={form.title}
+              onChange={(event) => setForm({ ...form, title: event.target.value })}
+              placeholder="Ej. Lista Oaxaca junio, Catálogo Tenango..."
+            />
+          </div>
+          <div>
+            <Label>Tipo</Label>
+            <Select
+              value={form.source_type}
+              onValueChange={(source_type) => setForm({ ...form, source_type: source_type as SupplierList["source_type"] })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="file">Foto o PDF</SelectItem>
+                <SelectItem value="google_sheets">Google Sheets</SelectItem>
+                <SelectItem value="link">Otro link</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {form.source_type === "file" ? (
+            <div>
+              <Label>Archivo</Label>
+              <Input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {file?.name || list?.file_name || "Puedes subir foto del celular, captura o PDF del proveedor."}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <Label>{form.source_type === "google_sheets" ? "Link de Google Sheets" : "Link"}</Label>
+              <Input
+                value={form.external_url}
+                onChange={(event) => setForm({ ...form, external_url: event.target.value })}
+                placeholder={form.source_type === "google_sheets" ? "https://docs.google.com/spreadsheets/..." : "https://..."}
+              />
+            </div>
+          )}
+
+          <div>
+            <Label>Nota</Label>
+            <Textarea
+              value={form.note}
+              onChange={(event) => setForm({ ...form, note: event.target.value })}
+              placeholder="Ej. precios actualizados, pedir con 2 semanas..."
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+          <Button onClick={save} disabled={loading}>{loading ? "Guardando..." : "Guardar"}</Button>
         </div>
       </DialogContent>
     </Dialog>
