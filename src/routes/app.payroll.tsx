@@ -45,7 +45,7 @@ function MyPayrollPage() {
       const { data, error } = await supabase
         .from("employees")
         .select("*")
-        .eq("profile_id", user?.id)
+        .eq("profile_id", user?.id ?? "")
         .eq("is_active", true)
         .maybeSingle();
       if (error) throw error;
