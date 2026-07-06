@@ -516,7 +516,7 @@ function ExpensesTab({ year, month }: { year: number; month: number }) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <p className={`font-numeric font-semibold ${paid ? "" : "text-destructive"}`}>
-                    {formatMoney(Number(paid?.amount ?? t.default_amount), t.currency)}
+                    {formatMoney(Number((paid as any)?.amount ?? t.default_amount), t.currency)}
                   </p>
                   {!paid && <Button size="sm" onClick={() => setPayingTemplate(t)}><CheckCircle2 className="h-4 w-4 mr-1" /> Pagado</Button>}
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTemplate(t)}><Pencil className="h-4 w-4" /></Button>

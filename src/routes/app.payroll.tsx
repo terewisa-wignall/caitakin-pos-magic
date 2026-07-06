@@ -45,7 +45,7 @@ function MyPayrollPage() {
       const { data, error } = await supabase
         .from("employees")
         .select("*")
-        .eq("profile_id", user?.id)
+        .eq("profile_id", user?.id ?? "")
         .eq("is_active", true)
         .maybeSingle();
       if (error) throw error;
@@ -60,7 +60,7 @@ function MyPayrollPage() {
       const { data, error } = await supabase
         .from("payroll_payments")
         .select("*")
-        .eq("employee_id", employee.data.id)
+        .eq("employee_id", employee.data?.id ?? "")
         .order("paid_at", { ascending: false })
         .limit(30);
       if (error) throw error;

@@ -354,18 +354,21 @@ function SellPage() {
             <p className="text-sm text-muted-foreground">Este producto no tiene variantes. <Link to="/app/inventory" className="text-primary underline">Agregar</Link></p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {sortVariantsBySize(variantPickerFor?.variants ?? []).map((v) => (
-                <button
-                  key={v.id}
-                  disabled={v.stock <= 0}
-                  onClick={() => { addLine(variantPickerFor, v); setVariantPickerFor(null); }}
-                  className="border rounded-lg p-3 text-left hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <p className="font-medium">{v.variant_name}</p>
-                  <p className="text-xs text-muted-foreground">Stock: {v.stock}</p>
-                  <p className="text-sm font-semibold font-numeric mt-1">{formatMoney(Number(v.price_override_mxn ?? variantPickerFor.base_price_mxn))}</p>
-                </button>
-              ))}
+              {variantPickerFor && sortVariantsBySize(variantPickerFor.variants).map((v) => {
+                const picked = variantPickerFor;
+                return (
+                  <button
+                    key={v.id}
+                    disabled={v.stock <= 0}
+                    onClick={() => { addLine(picked, v); setVariantPickerFor(null); }}
+                    className="border rounded-lg p-3 text-left hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <p className="font-medium">{v.variant_name}</p>
+                    <p className="text-xs text-muted-foreground">Stock: {v.stock}</p>
+                    <p className="text-sm font-semibold font-numeric mt-1">{formatMoney(Number(v.price_override_mxn ?? picked.base_price_mxn))}</p>
+                  </button>
+                );
+              })}
             </div>
           )}
         </DialogContent>
