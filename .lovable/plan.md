@@ -1,90 +1,60 @@
-# Auditoría y estabilización de CAsitakin POS
+# Auditoría general de CAsitakin POS
 
-## Modelo confirmado
-- **2 roles**: `admin` y `seller`. "Encargada", "vendedora" y "cubre turnos" son etiquetas internas pero todas operan como `seller`. No se cambia el enum.
-- **Comisiones de seller**: ve **sus propias comisiones** + **total de ventas de la tienda** (sin desglose por persona).
-- **Alcance**: auditoría + fixes críticos + mejoras mobile + refactors.
+## Hallazgos principales
 
----
+### 1. Errores de compilación TypeScript (bloquean build)
 
-## 1. Auditoría (lectura, sin tocar código)
+**`src/routes/app.suppliers.tsx`** — usa tablas que **no existen** en la base de datos: `suppliers`, `supplier_products`, `supplier_lists`. Toda la página está rota (12+ errores TS). Además el menú lateral la muestra a admins.
 
-Recorro cada módulo verificando contra tus checklist:
+**`src/routes/app.sell.tsx`** (2 errores)
+- Línea 361: pasa `Product | null` donde se espera `Product` — falta guard.
+- Línea 366: `variantPickerFor` posiblemente `null`.
 
-- **Inventario** (`app.inventory.tsx`, `app.inventory.$productId.tsx`): creación simple / por tallas, edición y borrado de producto y variantes, orden de tallas (`getSizeSortValue` ya existe), foto cámara + galería, upload a `product-photos`.
-- **Ventas** (`app.sell.tsx`): carrito, descuento de stock vía trigger `decrement_variant_stock`, generación de pagos, tickets.
-- **Caja** (`app.cash.tsx`): apertura / cierre, movimientos, handoffs.
-- **Usuarios** (`app.users.tsx`): crear, desactivar, cambiar rol — solo admin.
-- **Auth** (`auth.tsx`, `use-auth.ts`): login usuario/clave (sin email), bloqueo de inactivos.
-- **Configuración** (`app.settings.tsx`): CRUD de categorías por admin.
-- **HR / Finanzas / Reportes**: revisión de errores TS y rutas, no se rediseñan.
+**`src/routes/app.payroll.tsx`** (2 errores)
+- Línea 48: `string | undefined` pasado como `string` (probable `profile?.id` sin guard).
+- Línea 63: `employee.data` posiblemente `null/undefined`.
 
-Entrego un reporte corto con los hallazgos antes de aplicar cambios grandes (en chat, no en archivo).
+**`src/routes/app.finance.tsx`** (1 error)
+- Línea 519: acceso a `.amount` sobre `{}` (tipo inferido vacío en un reduce/map).
 
----
+### 2. Base de datos / Seguridad
 
-## 2. Fixes técnicos (orden de ataque)
+- 9 warnings del linter de Supabase (0029): funciones `SECURITY DEFINER` ejecutables por usuarios autenticados. Son en su mayoría **falsos positivos necesarios** (`has_role`, `is_admin`, `decrement_variant_stock`, `create_commission_for_order`, triggers). Documentar y silenciar las que sí lo son, revocar EXECUTE en las que no se llaman desde el cliente.
+- Módulo Proveedores: decidir si **crear las tablas** (`suppliers`, `supplier_products`, `supplier_lists` + storage + RLS) o **eliminar la página** del menú y del árbol de rutas.
 
-### 2.1 Base de datos / RLS
-- Auditar políticas en `products`, `product_variants`, `categories`, `orders`, `order_items`, `payments`, `tickets`, `cash_sessions`, `cash_movements`, `shift_handoffs`, `commissions`. Confirmar que **todo seller activo** puede:
-  - INSERT/UPDATE/DELETE en `products`, `product_variants`, `categories` (lo pediste explícitamente para inventario).
-  - SELECT global de productos / variantes / categorías.
-  - SELECT total de ventas del día (vista o policy específica para sellers).
-  - SELECT solo de **sus** comisiones (`seller_id = auth.uid()`).
-- Confirmar policies de storage `product-photos` (INSERT/SELECT para `authenticated`) y `employee-docs` (solo admin).
-- Bloquear escritura de no-admin en `user_roles`, `profiles.is_active`, `profiles.commission_rate` (el trigger `prevent_profile_privilege_escalation` ya existe — verificar que cubre todos los campos).
-- Si una policy depende de la sesión de caja abierta, dejarla.
-- Migración única consolidando los GRANT/policy ajustes necesarios.
+### 3. Estado del resto de la app
 
-### 2.2 Errores de tipos / build
-- Pasada de `tsc` (lo dispara el harness) y arreglo de cualquier residuo de los cambios recientes (HR, cash, sell).
-- Eliminar `as any` y casts innecesarios donde rompan inferencia.
-- Confirmar que `routeTree.gen.ts` no tiene desfases con archivos.
-
-### 2.3 Bugs funcionales
-- **Inventario**:
-  - Confirmar que `getSizeSortValue` ordena correctamente sets mixtos (numérico, texto CH/M/G, rangos `0-3m`).
-  - Editar variante: validar que `price_override_mxn` se guarda/limpia.
-  - Borrar producto: cascada de variantes y foto en storage.
-  - Subida de foto: aceptar HEIC del iPhone (validar mime, mostrar error claro si falla).
-- **Ventas**:
-  - Validar descuento de stock en variantes y rollback si falla el pago.
-  - Mostrar mensaje claro cuando la caja está cerrada (no debería poder vender).
-- **Caja**: cierre con totales correctos por método de pago y moneda.
-- **Usuarios**: que la lista no muestre el email interno `@casitakin.local` — mostrar solo username derivado.
-- **Comisiones (seller)**: vista que muestra `mis comisiones` + `ventas totales tienda hoy/mes`.
-
-### 2.4 Mobile / responsive
-- `app-shell` y nav: que el menú sea usable en 360-414px de ancho.
-- Diálogos largos (Nuevo producto, Editar variante, Cobrar): `max-h-[90vh] overflow-y-auto` + botones sticky abajo donde aplique.
-- Tablas largas (inventario, ventas, comisiones, HR): wrap a tarjetas en `< sm`.
-- Inputs numéricos con `inputMode="decimal"`.
-- Botones con texto largo: truncar o iconizar en mobile.
-
-### 2.5 Refactors (puntuales, sin romper)
-- Extraer helpers compartidos:
-  - `lib/permissions.ts`: `canManageInventory`, `canManageUsers`, `canSeeAllCommissions`.
-  - `lib/sizes.ts`: mover `QUICK_SIZE_SETS`, `getSizeSortValue`, `sortSizes` (hoy duplicados).
-  - `lib/storage.ts`: helper `uploadProductPhoto(file)` y `uploadEmployeeDoc(file)`.
-- Centralizar queries Supabase reusadas (productos, categorías, sesión de caja) en hooks `useProducts`, `useCategories`, `useOpenCashSession`.
-- Quitar imports muertos y `console.log` residuales.
+- Auth, inventario, ventas (fuera de los 2 bugs), caja, comisiones, dashboard, usuarios, settings: compilaron OK en la última pasada. No hay errores de runtime reportados en consola.
 
 ---
 
-## 3. Entregables
+## Plan de reparación
 
-- 1 migración SQL consolidada (policies + GRANTs faltantes).
-- Cambios de código por módulo, manteniendo el diseño actual.
-- Reporte corto en chat con: lo que estaba bien, lo arreglado, lo que sugiero para una segunda iteración (ej. tests, separar manager/cubre-turnos si en el futuro cambia de opinión).
+### Paso 1 — Fix de TypeScript en rutas activas
+- `app.sell.tsx`: añadir guards para `Product | null` y `variantPickerFor` antes de usarlos en el render del picker.
+- `app.payroll.tsx`: guardar `if (!profile?.id) return null` antes del query; manejar `employee.data` con optional chaining + fallback.
+- `app.finance.tsx`: tipar el acumulador del reduce (`{ amount: number }`) o extraer un tipo explícito.
 
-## 4. Lo que NO voy a hacer
-- No cambio el enum de roles (te quedas con admin/seller).
-- No reescribo HR, Finanzas ni Reportes; solo arreglo errores y mobile.
-- No toco `src/integrations/supabase/*` autogenerado.
-- No agrego features nuevas; solo estabilizo lo existente.
+### Paso 2 — Módulo Proveedores (necesito tu decisión, ver preguntas abajo)
+Opción A: crear migración con las 3 tablas + bucket + RLS + GRANTs, y dejar la página funcional.
+Opción B: quitar `app.suppliers.tsx` y el item "Proveedores" de `app-shell.tsx`.
 
-## 5. Riesgos
-- Cambios de RLS pueden ocultar/mostrar datos diferente; reviso después con queries de prueba.
-- Refactors de helpers pueden tocar muchos archivos a la vez; los hago en commits lógicos pequeños.
+### Paso 3 — Warnings de Supabase
+- Revisar cada función `SECURITY DEFINER`:
+  - Triggers (`handle_new_user`, `decrement_variant_stock`, `create_commission_for_order`, `prevent_profile_privilege_escalation`, `apply_payroll_loan_deduction`, `update_updated_at_column`): revocar EXECUTE a `authenticated`/`anon` (los triggers no necesitan permiso de llamada).
+  - Helpers usados en RLS (`has_role`, `is_admin`, `is_active_seller_or_admin`, `cash_session_belongs_to_user`, `vacation_days_by_seniority`): mantener EXECUTE a `authenticated` y documentar en `@security-memory` que son intencionales.
 
-¿Apruebas para implementar?
+### Paso 4 — Verificación
+- `tsgo --noEmit` limpio (0 errores).
+- `supabase--linter` con solo warnings documentados.
+- Smoke test manual en preview: login, inventario, venta, caja, comisiones.
+
+## Lo que NO voy a tocar
+- Diseño visual, enum de roles, HR/Finanzas/Reportes más allá de los fixes TS listados, archivos autogenerados.
+
+---
+
+## Preguntas antes de implementar
+
+1. **¿Qué hago con Proveedores?** Crear las tablas para que funcione, o eliminar el módulo del menú y del código.
+2. **¿Reporto y arreglo, o solo reporto?** Puedo dejar solo el reporte para que decidas, o aplicar los fixes de Pasos 1, 3 (y 2 según tu respuesta) en una sola pasada.
