@@ -538,6 +538,60 @@ export type Database = {
         }
         Relationships: []
       }
+      expense_templates: {
+        Row: {
+          category: string | null
+          concept: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          default_amount: number
+          due_day: number
+          frequency: string
+          id: string
+          is_active: boolean
+          is_variable: boolean
+          note: string | null
+          payment_method: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          concept: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          default_amount?: number
+          due_day?: number
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          is_variable?: boolean
+          note?: string | null
+          payment_method?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          concept?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          default_amount?: number
+          due_day?: number
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          is_variable?: boolean
+          note?: string | null
+          payment_method?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number
@@ -553,6 +607,7 @@ export type Database = {
           payment_method: string | null
           receipt_url: string | null
           recurring_frequency: string | null
+          recurring_template_id: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at: string
         }
@@ -570,6 +625,7 @@ export type Database = {
           payment_method?: string | null
           receipt_url?: string | null
           recurring_frequency?: string | null
+          recurring_template_id?: string | null
           type: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
         }
@@ -587,10 +643,19 @@ export type Database = {
           payment_method?: string | null
           receipt_url?: string | null
           recurring_frequency?: string | null
+          recurring_template_id?: string | null
           type?: Database["public"]["Enums"]["expense_type"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "expenses_recurring_template_id_fkey"
+            columns: ["recurring_template_id"]
+            isOneToOne: false
+            referencedRelation: "expense_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       loan_payments: {
         Row: {
@@ -1095,201 +1160,6 @@ export type Database = {
           name?: string
         }
         Relationships: []
-      }
-      supplier_products: {
-        Row: {
-          category_id: string | null
-          created_at: string
-          currency: string
-          description: string | null
-          id: string
-          inventory_product_id: string | null
-          is_available: boolean
-          last_quoted_at: string | null
-          lead_time_days: number | null
-          min_order_qty: number | null
-          name: string
-          notes: string | null
-          supplier_id: string
-          supplier_sku: string | null
-          unit_cost: number
-          updated_at: string
-        }
-        Insert: {
-          category_id?: string | null
-          created_at?: string
-          currency?: string
-          description?: string | null
-          id?: string
-          inventory_product_id?: string | null
-          is_available?: boolean
-          last_quoted_at?: string | null
-          lead_time_days?: number | null
-          min_order_qty?: number | null
-          name: string
-          notes?: string | null
-          supplier_id: string
-          supplier_sku?: string | null
-          unit_cost?: number
-          updated_at?: string
-        }
-        Update: {
-          category_id?: string | null
-          created_at?: string
-          currency?: string
-          description?: string | null
-          id?: string
-          inventory_product_id?: string | null
-          is_available?: boolean
-          last_quoted_at?: string | null
-          lead_time_days?: number | null
-          min_order_qty?: number | null
-          name?: string
-          notes?: string | null
-          supplier_id?: string
-          supplier_sku?: string | null
-          unit_cost?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "supplier_products_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "supplier_products_inventory_product_id_fkey"
-            columns: ["inventory_product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "supplier_products_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      supplier_lists: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          external_url: string | null
-          file_name: string | null
-          file_path: string | null
-          id: string
-          mime_type: string | null
-          note: string | null
-          size_bytes: number | null
-          source_type: string
-          supplier_id: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          external_url?: string | null
-          file_name?: string | null
-          file_path?: string | null
-          id?: string
-          mime_type?: string | null
-          note?: string | null
-          size_bytes?: number | null
-          source_type?: string
-          supplier_id: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          external_url?: string | null
-          file_name?: string | null
-          file_path?: string | null
-          id?: string
-          mime_type?: string | null
-          note?: string | null
-          size_bytes?: number | null
-          source_type?: string
-          supplier_id?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "supplier_lists_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "supplier_lists_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      suppliers: {
-        Row: {
-          category_id: string | null
-          classification_name: string | null
-          contact_name: string | null
-          created_at: string
-          email: string | null
-          id: string
-          is_active: boolean
-          location: string | null
-          name: string
-          notes: string | null
-          phone: string | null
-          updated_at: string
-        }
-        Insert: {
-          category_id?: string | null
-          classification_name?: string | null
-          contact_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean
-          location?: string | null
-          name: string
-          notes?: string | null
-          phone?: string | null
-          updated_at?: string
-        }
-        Update: {
-          category_id?: string | null
-          classification_name?: string | null
-          contact_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean
-          location?: string | null
-          name?: string
-          notes?: string | null
-          phone?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "suppliers_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       shift_handoffs: {
         Row: {
