@@ -40,6 +40,7 @@ type InventoryProduct = {
   id: string;
   name: string;
   photo_url: string | null;
+  photo_thumb_url: string | null;
   base_price_mxn: number;
   is_active: boolean;
   categories: { name: string } | null;
