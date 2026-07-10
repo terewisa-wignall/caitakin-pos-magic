@@ -300,8 +300,9 @@ function ProductDetail() {
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="space-y-2 lg:w-40">
             <div className="h-32 w-32 rounded-lg bg-muted overflow-hidden">
-              {p.photo_url ? (
-                <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+              {p.photo_thumb_url || p.photo_url ? (
+                <img src={p.photo_thumb_url ?? p.photo_url ?? ""} alt={p.name} className="w-full h-full object-cover" />
+
               ) : null}
             </div>
             {canManageInventory && (
