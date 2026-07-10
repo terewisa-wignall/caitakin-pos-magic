@@ -76,7 +76,7 @@ function InventoryList() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id,name,photo_url,base_price_mxn,is_active,categories(name), variants:product_variants(id,stock)",
+          "id,name,photo_url,photo_thumb_url,base_price_mxn,is_active,categories(name), variants:product_variants(id,stock)",
         )
         .order("name");
       if (error) throw error;
@@ -127,9 +127,9 @@ function InventoryList() {
             <Link key={p.id} to="/app/inventory/$productId" params={{ productId: p.id }}>
               <Card className="p-3 flex gap-3 hover:shadow-elevated transition-shadow">
                 <div className="h-16 w-16 rounded-lg bg-muted overflow-hidden shrink-0">
-                  {p.photo_url ? (
+                  {p.photo_thumb_url || p.photo_url ? (
                     <img
-                      src={p.photo_url}
+                      src={p.photo_thumb_url ?? p.photo_url ?? ""}
                       alt={p.name}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -243,16 +243,12 @@ function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => 
     setLoading(true);
     try {
       let photo_url: string | null = null;
+      let photo_thumb_url: string | null = null;
       if (file) {
-        const path = `${crypto.randomUUID()}-${file.name}`;
-        const { error: upErr } = await supabase.storage
-          .from("product-photos")
-          .upload(path, file);
-        if (upErr) throw upErr;
-        const { data: signed } = await supabase.storage
-          .from("product-photos")
-          .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
-        photo_url = signed?.signedUrl ?? null;
+        const { uploadProductPhoto } = await import("@/lib/upload-photo");
+        const uploaded = await uploadProductPhoto(file);
+        photo_url = uploaded.photo_url;
+        photo_thumb_url = uploaded.photo_thumb_url;
       }
       const { data, error } = await supabase
         .from("products")
@@ -263,6 +259,7 @@ function CreateProductDialog({ open, onClose }: { open: boolean; onClose: () => 
           base_price_mxn: basePrice,
           sku: form.sku || null,
           photo_url,
+          photo_thumb_url,
         })
         .select("id")
         .single();
