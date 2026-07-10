@@ -1,0 +1,19 @@
+{
+  "name": "CAsitakin · Punto de venta",
+  "short_name": "CAsitakin",
+  "description": "Ventas, inventario y caja para CAsitakin.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf6f1",
+  "theme_color": "#c25a3c",
+  "icons": [
+    {
+      "src": "/__l5e/assets-v1/logo/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

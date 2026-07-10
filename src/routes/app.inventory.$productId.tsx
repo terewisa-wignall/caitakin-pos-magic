@@ -62,6 +62,7 @@ type ProductDetailData = {
   description: string | null;
   category_id: string | null;
   photo_url: string | null;
+  photo_thumb_url: string | null;
   base_price_mxn: number;
   sku: string | null;
   is_active: boolean;
@@ -156,16 +157,12 @@ function ProductDetail() {
     setSavingProduct(true);
     try {
       let photo_url = product.data?.photo_url ?? null;
+      let photo_thumb_url = product.data?.photo_thumb_url ?? null;
       if (uploadFile) {
-        const path = `${crypto.randomUUID()}-${uploadFile.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from("product-photos")
-          .upload(path, uploadFile);
-        if (uploadError) throw uploadError;
-        const { data: signed } = await supabase.storage
-          .from("product-photos")
-          .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
-        photo_url = signed?.signedUrl ?? null;
+        const { uploadProductPhoto } = await import("@/lib/upload-photo");
+        const uploaded = await uploadProductPhoto(uploadFile);
+        photo_url = uploaded.photo_url;
+        photo_thumb_url = uploaded.photo_thumb_url;
       }
 
       const { error } = await supabase
@@ -177,6 +174,7 @@ function ProductDetail() {
           base_price_mxn: basePrice,
           sku: productDraft.sku.trim() || null,
           photo_url,
+          photo_thumb_url,
         })
         .eq("id", productId);
       if (error) throw error;
@@ -302,8 +300,9 @@ function ProductDetail() {
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="space-y-2 lg:w-40">
             <div className="h-32 w-32 rounded-lg bg-muted overflow-hidden">
-              {p.photo_url ? (
-                <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+              {p.photo_thumb_url || p.photo_url ? (
+                <img src={p.photo_thumb_url ?? p.photo_url ?? ""} alt={p.name} className="w-full h-full object-cover" />
+
               ) : null}
             </div>
             {canManageInventory && (
