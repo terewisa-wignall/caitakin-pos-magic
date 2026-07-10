@@ -33,7 +33,7 @@ export const Route = createFileRoute("/app/sell")({
 });
 
 type Variant = { id: string; variant_name: string; size: string | null; color: string | null; stock: number; price_override_mxn: number | null };
-type Product = { id: string; name: string; photo_url: string | null; base_price_mxn: number; category_id: string | null; variants: Variant[]; categories: { name: string } | null };
+type Product = { id: string; name: string; photo_url: string | null; photo_thumb_url: string | null; base_price_mxn: number; category_id: string | null; variants: Variant[]; categories: { name: string } | null };
 type CartLine = { variantId: string; productId: string; name: string; variantLabel: string; unitPriceMxn: number; quantity: number; stock: number };
 type PaymentMethod = "cash" | "transfer" | "debit_card" | "credit_card";
 type Payment = { method: PaymentMethod; currency: Currency; amount: number; voucherFile?: File | null };
@@ -97,13 +97,38 @@ function SellPage() {
   const products = useQuery({
     queryKey: ["sell-products"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id,name,photo_url,base_price_mxn,category_id, categories(name), variants:product_variants(id,variant_name,size,color,stock,price_override_mxn)")
-        .eq("is_active", true)
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as unknown as Product[];
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id,name,photo_url,photo_thumb_url,base_price_mxn,category_id, categories(name), variants:product_variants(id,variant_name,size,color,stock,price_override_mxn)")
+          .eq("is_active", true)
+          .order("name");
+        if (error) throw error;
+        const list = (data ?? []) as unknown as Product[];
+        // Cache for offline use.
+        void import("@/lib/offline-db").then((m) =>
+          m.cacheProducts(
+            list.map((p) => ({
+              id: p.id,
+              name: p.name,
+              photo_url: p.photo_url,
+              photo_thumb_url: p.photo_thumb_url,
+              base_price_mxn: p.base_price_mxn,
+              category_id: p.category_id,
+              categories: p.categories,
+              variants: p.variants,
+              cached_at: Date.now(),
+            })),
+          ),
+        );
+        return list;
+      } catch (e) {
+        // Fallback to cached snapshot when offline.
+        const m = await import("@/lib/offline-db");
+        const cached = await m.loadCachedProducts();
+        if (cached.length > 0) return cached as unknown as Product[];
+        throw e;
+      }
     },
   });
 
@@ -288,8 +313,9 @@ function SellPage() {
                 <button key={p.id} onClick={() => setVariantPickerFor(p)} className="text-left">
                   <Card className="overflow-hidden hover:shadow-elevated transition-shadow">
                     <div className="aspect-square bg-muted relative">
-                      {p.photo_url ? (
-                        <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+                      {p.photo_thumb_url || p.photo_url ? (
+                        <img src={p.photo_thumb_url ?? p.photo_url ?? ""} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">Sin foto</div>
                       )}
