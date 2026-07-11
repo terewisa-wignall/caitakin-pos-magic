@@ -565,16 +565,25 @@ function CartPanel({
                 onChange={(file) => setPayment(0, { voucherFile: file })}
               />
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input type="number" placeholder="Monto" value={payments[0]?.amount || ""} onChange={(e) => setPayment(0, { amount: Number(e.target.value) || 0 })} className="font-numeric" />
-            </div>
-            <Button size="sm" variant="link" className="px-0" onClick={() => setPayment(0, { amount: totalDisplay, currency })}>Usar total</Button>
+            {singleAutoFill ? (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm flex items-center justify-between">
+                <span className="text-muted-foreground">Se cobrará (MXN)</span>
+                <span className="font-numeric font-bold text-primary">{formatMoney(totalMxn, "MXN")}</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" placeholder="Monto" value={payments[0]?.amount || ""} onChange={(e) => setPayment(0, { amount: Number(e.target.value) || 0 })} className="font-numeric" />
+                </div>
+                <Button size="sm" variant="link" className="px-0" onClick={() => setPayment(0, { amount: totalDisplay, currency })}>Usar total</Button>
+              </>
+            )}
           </TabsContent>
           <TabsContent value="mixed" className="space-y-2 pt-3">
             {payments.map((p: Payment, i: number) => (
