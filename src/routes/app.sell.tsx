@@ -439,6 +439,20 @@ function CartPanel({
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
   const idCameraRef = useRef<HTMLInputElement>(null);
+  const singleMethod = payments[0]?.method as PaymentMethod | undefined;
+  const singleIsCard = singleMethod === "debit_card" || singleMethod === "credit_card";
+  const singleIsTransfer = singleMethod === "transfer";
+  const singleAutoFill = singleIsCard || singleIsTransfer;
+
+  useEffect(() => {
+    if (!singleAutoFill) return;
+    const p = payments[0];
+    if (!p) return;
+    if (p.currency !== "MXN" || Math.abs(Number(p.amount) - totalMxn) > 0.01) {
+      setPayment(0, { currency: "MXN", amount: totalMxn });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleAutoFill, totalMxn, payments[0]?.method]);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b p-4">
