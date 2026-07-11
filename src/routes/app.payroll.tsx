@@ -238,6 +238,10 @@ function PayrollSelfDialog({
               <div><Label>Días trabajados</Label><Input type="number" step="0.5" value={daysWorked} onChange={(e) => setDaysWorked(e.target.value)} /></div>
               <div><Label>Sueldo por día</Label><Input value={formatMoney(dailyRate)} disabled /></div>
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Bono</Label><Input type="number" step="0.01" placeholder="0" value={bonus} onChange={(e) => setBonus(e.target.value)} className="font-numeric" /></div>
+              <div><Label>Finiquito</Label><Input type="number" step="0.01" placeholder="0" value={severance} onChange={(e) => setSeverance(e.target.value)} className="font-numeric" /></div>
+            </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Total del recibo</span>
               <span className="font-bold text-primary">{formatMoney(net)}</span>
