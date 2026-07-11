@@ -177,14 +177,20 @@ function PayrollSelfDialog({
   const [periodEnd, setPeriodEnd] = useState(today);
   const [paidAt, setPaidAt] = useState(today);
   const [daysWorked, setDaysWorked] = useState("");
+  const [bonus, setBonus] = useState("");
+  const [severance, setSeverance] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   const salaryBase = dailyRate * (Number(daysWorked) || 0);
-  const net = Math.max(0, salaryBase);
+  const bonusN = Number(bonus) || 0;
+  const severanceN = Number(severance) || 0;
+  const net = Math.max(0, salaryBase + bonusN + severanceN);
 
   const save = async () => {
-    if (!daysWorked || Number(daysWorked) <= 0) { toast.error("Captura días trabajados"); return; }
+    if ((!daysWorked || Number(daysWorked) <= 0) && bonusN <= 0 && severanceN <= 0) {
+      toast.error("Captura días, bono o finiquito"); return;
+    }
     setSaving(true);
     const receiptNumber = `NOM-${new Date(paidAt).getFullYear()}-${Date.now().toString().slice(-6)}`;
     const { data, error } = await supabase
@@ -194,9 +200,11 @@ function PayrollSelfDialog({
         period_start: periodStart,
         period_end: periodEnd,
         paid_at: paidAt,
-        days_worked: Number(daysWorked),
+        days_worked: Number(daysWorked) || 0,
         daily_rate: dailyRate,
         gross_amount: salaryBase,
+        bonus_amount: bonusN,
+        severance_amount: severanceN,
         amount: net,
         payment_method: "pendiente",
         note: note || null,
@@ -208,7 +216,7 @@ function PayrollSelfDialog({
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Recibo generado y guardado");
-    setDaysWorked("");
+    setDaysWorked(""); setBonus(""); setSeverance("");
     setNote("");
     onClose();
     onSaved(data);
@@ -229,6 +237,10 @@ function PayrollSelfDialog({
             <div className="grid grid-cols-2 gap-2">
               <div><Label>Días trabajados</Label><Input type="number" step="0.5" value={daysWorked} onChange={(e) => setDaysWorked(e.target.value)} /></div>
               <div><Label>Sueldo por día</Label><Input value={formatMoney(dailyRate)} disabled /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Bono</Label><Input type="number" step="0.01" placeholder="0" value={bonus} onChange={(e) => setBonus(e.target.value)} className="font-numeric" /></div>
+              <div><Label>Finiquito</Label><Input type="number" step="0.01" placeholder="0" value={severance} onChange={(e) => setSeverance(e.target.value)} className="font-numeric" /></div>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Total del recibo</span>

@@ -20,7 +20,7 @@ import {
   Mail,
   IdCard,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, type Currency } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -439,6 +439,20 @@ function CartPanel({
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
   const idCameraRef = useRef<HTMLInputElement>(null);
+  const singleMethod = payments[0]?.method as PaymentMethod | undefined;
+  const singleIsCard = singleMethod === "debit_card" || singleMethod === "credit_card";
+  const singleIsTransfer = singleMethod === "transfer";
+  const singleAutoFill = singleIsCard || singleIsTransfer;
+
+  useEffect(() => {
+    if (!singleAutoFill) return;
+    const p = payments[0];
+    if (!p) return;
+    if (p.currency !== "MXN" || Math.abs(Number(p.amount) - totalMxn) > 0.01) {
+      setPayment(0, { currency: "MXN", amount: totalMxn });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleAutoFill, totalMxn, payments[0]?.method]);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b p-4">
@@ -551,16 +565,25 @@ function CartPanel({
                 onChange={(file) => setPayment(0, { voucherFile: file })}
               />
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input type="number" placeholder="Monto" value={payments[0]?.amount || ""} onChange={(e) => setPayment(0, { amount: Number(e.target.value) || 0 })} className="font-numeric" />
-            </div>
-            <Button size="sm" variant="link" className="px-0" onClick={() => setPayment(0, { amount: totalDisplay, currency })}>Usar total</Button>
+            {singleAutoFill ? (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm flex items-center justify-between">
+                <span className="text-muted-foreground">Se cobrará (MXN)</span>
+                <span className="font-numeric font-bold text-primary">{formatMoney(totalMxn, "MXN")}</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" placeholder="Monto" value={payments[0]?.amount || ""} onChange={(e) => setPayment(0, { amount: Number(e.target.value) || 0 })} className="font-numeric" />
+                </div>
+                <Button size="sm" variant="link" className="px-0" onClick={() => setPayment(0, { amount: totalDisplay, currency })}>Usar total</Button>
+              </>
+            )}
           </TabsContent>
           <TabsContent value="mixed" className="space-y-2 pt-3">
             {payments.map((p: Payment, i: number) => (

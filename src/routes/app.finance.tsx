@@ -960,7 +960,10 @@ function EmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void 
 function PayrollDialog({ open, preset, payment, employees, onClose }: { open: boolean; preset?: any; payment?: any; employees: any[]; onClose: () => void }) {
   const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState<string>("");
-  const [amount, setAmount] = useState(0);
+  const [daysWorked, setDaysWorked] = useState(0);
+  const [dailyRate, setDailyRate] = useState(0);
+  const [bonus, setBonus] = useState(0);
+  const [severance, setSeverance] = useState(0);
   const [periodStart, setPeriodStart] = useState(new Date().toISOString().slice(0, 10));
   const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
@@ -968,11 +971,17 @@ function PayrollDialog({ open, preset, payment, employees, onClose }: { open: bo
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const gross = (Number(dailyRate) || 0) * (Number(daysWorked) || 0);
+  const amount = Math.max(0, gross + (Number(bonus) || 0) + (Number(severance) || 0));
+
   useEffect(() => {
     if (!open) return;
     if (payment?.id) {
       setEmployeeId(payment.employee_id);
-      setAmount(Number(payment.amount || 0));
+      setDaysWorked(Number(payment.days_worked || 0));
+      setDailyRate(Number(payment.daily_rate || 0));
+      setBonus(Number(payment.bonus_amount || 0));
+      setSeverance(Number(payment.severance_amount || 0));
       setPeriodStart(payment.period_start ?? new Date().toISOString().slice(0, 10));
       setPeriodEnd(payment.period_end ?? new Date().toISOString().slice(0, 10));
       setPaidAt(payment.paid_at ?? new Date().toISOString().slice(0, 10));
@@ -980,14 +989,19 @@ function PayrollDialog({ open, preset, payment, employees, onClose }: { open: bo
       setNote(payment.note ?? "");
       return;
     }
-    if (preset?.id) { setEmployeeId(preset.id); setAmount(Number(preset.salary || 0)); }
+    if (preset?.id) { setEmployeeId(preset.id); setDailyRate(Number(preset.salary || 0)); setDaysWorked(0); setBonus(0); setSeverance(0); }
   }, [open, payment, preset?.id, preset?.salary]);
 
   const submit = async () => {
-    if (!employeeId || !amount) { toast.error("Empleado y monto"); return; }
+    if (!employeeId || amount <= 0) { toast.error("Empleado y monto > 0"); return; }
     setSaving(true);
-    const payload = {
+    const payload: any = {
       employee_id: employeeId, amount, currency: "MXN",
+      days_worked: Number(daysWorked) || 0,
+      daily_rate: Number(dailyRate) || 0,
+      gross_amount: gross,
+      bonus_amount: Number(bonus) || 0,
+      severance_amount: Number(severance) || 0,
       period_start: periodStart, period_end: periodEnd,
       paid_at: paidAt, payment_method: method, note: note || null, created_by: user?.id,
     };
@@ -997,7 +1011,7 @@ function PayrollDialog({ open, preset, payment, employees, onClose }: { open: bo
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success(payment?.id ? "Pago actualizado" : "Pago registrado");
-    setAmount(0); setNote("");
+    setBonus(0); setSeverance(0); setNote("");
     onClose();
   };
 
@@ -1007,7 +1021,7 @@ function PayrollDialog({ open, preset, payment, employees, onClose }: { open: bo
         <DialogHeader><DialogTitle>{payment?.id ? "Editar pago de nómina" : "Pago de nómina"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Empleado</Label>
-            <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); const e = employees.find((x) => x.id === v); if (e) setAmount(Number(e.salary || 0)); }}>
+            <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); const e = employees.find((x) => x.id === v); if (e) setDailyRate(Number(e.salary || 0)); }}>
               <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
               <SelectContent>{employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
             </Select>
@@ -1017,16 +1031,28 @@ function PayrollDialog({ open, preset, payment, employees, onClose }: { open: bo
             <div><Label>Periodo hasta</Label><Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Monto</Label><Input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} className="font-numeric" /></div>
-            <div><Label>Pagado el</Label><Input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></div>
+            <div><Label>Días trabajados</Label><Input type="number" step="0.5" value={daysWorked} onChange={(e) => setDaysWorked(Number(e.target.value))} className="font-numeric" /></div>
+            <div><Label>Sueldo por día</Label><Input type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} className="font-numeric" /></div>
           </div>
-          <div><Label>Método</Label>
-            <Select value={method} onValueChange={setMethod}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Efectivo</SelectItem><SelectItem value="transfer">Transferencia</SelectItem>
-                <SelectItem value="debit_card">Débito</SelectItem><SelectItem value="credit_card">Crédito</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Bono</Label><Input type="number" step="0.01" value={bonus} onChange={(e) => setBonus(Number(e.target.value))} className="font-numeric" /></div>
+            <div><Label>Finiquito</Label><Input type="number" step="0.01" value={severance} onChange={(e) => setSeverance(Number(e.target.value))} className="font-numeric" /></div>
+          </div>
+          <div className="flex items-center justify-between text-sm bg-muted/40 rounded-md px-3 py-2">
+            <span className="text-muted-foreground">Total a pagar</span>
+            <span className="font-bold text-primary font-numeric">{formatMoney(amount)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Pagado el</Label><Input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></div>
+            <div><Label>Método</Label>
+              <Select value={method} onValueChange={setMethod}><SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Efectivo</SelectItem><SelectItem value="transfer">Transferencia</SelectItem>
+                  <SelectItem value="debit_card">Débito</SelectItem><SelectItem value="credit_card">Crédito</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div><Label>Nota</Label><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} /></div>
         </div>
