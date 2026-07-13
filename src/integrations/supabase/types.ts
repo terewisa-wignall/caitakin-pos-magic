@@ -1164,6 +1164,100 @@ export type Database = {
         }
         Relationships: []
       }
+      schedule_entries: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          employee_id: string | null
+          id: string
+          label_override: string | null
+          note: string | null
+          shift_id: string
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string | null
+          id?: string
+          label_override?: string | null
+          note?: string | null
+          shift_id: string
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string | null
+          id?: string
+          label_override?: string | null
+          note?: string | null
+          shift_id?: string
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_entries_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_entries_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_entries_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_shifts: {
+        Row: {
+          code: string
+          color: string
+          created_at: string
+          end_time: string | null
+          id: string
+          label: string
+          sort_order: number
+          start_time: string | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          color?: string
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          label: string
+          sort_order?: number
+          start_time?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          color?: string
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          label?: string
+          sort_order?: number
+          start_time?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       shift_handoffs: {
         Row: {
           accepted_at: string | null

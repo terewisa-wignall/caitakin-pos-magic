@@ -1,44 +1,76 @@
-## Cambios solicitados
+# Horarios semanales (nueva sección)
 
-### 1) Finiquito y bono en "Mi nómina"
-En `src/routes/app.payroll.tsx` (diálogo `PayrollSelfDialog`) hoy sólo se capturan días trabajados y una nota. Agrego:
-- Campo **Bono** (opcional).
-- Campo **Finiquito** (opcional).
-- Total: `neto = sueldoBase + bono + finiquito`, guardando `bonus_amount` y `severance_amount` en `payroll_payments` (columnas ya existen y el recibo ya las imprime).
+Nueva ruta `/app/schedule` visible para admin y vendedoras desde la navegación.
 
-### 2) Admin ve y edita todas las nóminas
-Hoy `app.payroll.tsx` es "mi nómina" (una vendedora ve sólo la suya) y `app.finance.tsx` tiene la vista admin pero sin edición de recibos ya creados.
+## Vista principal
+- Calendario semanal tipo Google Calendar: 7 columnas (Lun-Dom) con fecha del día arriba.
+- Bloques de color por turno: **Mañana** (verde suave), **Tarde** (terracota), **Descanso** (gris/dorado) — paleta actual.
+- Cada bloque muestra el nombre de la empleada y hora (ej. "Mirna · 9AM-2PM"). Se pueden apilar varias empleadas en el mismo turno/día.
+- Header con: semana actual (rango de fechas), flechas ← →, botón "Hoy", selector de semana, botón "Descargar imagen" y botón "Copiar semana".
 
-- **RLS**: revisar policies actuales de `payroll_payments` y asegurar que admin tenga `SELECT` y `UPDATE` sobre **todos** los recibos; la vendedora sólo sobre los propios (creados por ella o vinculados a su `employee_id`). Migración sólo si faltan.
-- En `app.finance.tsx` (sección Nómina), la lista de recibos actual gana un botón **Editar** visible sólo para admin, que abre un diálogo con los mismos campos (días, sueldo/día, bono, finiquito, deducciones, nota, fecha de pago, método) y guarda con `update` a `payroll_payments`.
-- En `app.payroll.tsx`, el admin (cuando entra a esta vista) verá también un botón **Editar** en cada recibo listado; la vendedora sigue viendo sólo botón "PDF".
+## Turnos fijos (editables en Configuración)
+Tres turnos base guardados en tabla `schedule_shifts`:
+- Mañana · 09:00-15:45
+- Tarde · 15:45-22:30
+- Descanso · (sin hora)
 
-### 3) Cobro más rápido en Venta
-En `src/routes/app.sell.tsx`, cuando el pago **no** es mixto:
-- **Tarjeta débito / crédito / transferencia** → forzar moneda **MXN**, ocultar selector de divisa y **no pedir monto** (se asume el total del carrito).
-- **Efectivo** → conservar selector de divisa (MXN/USD/EUR) y autollenar el monto con el total convertido, editable para el caso de "pagó de más y hay cambio".
-- Modo **mixto** queda igual (cada método captura su monto).
-- Comprobante y banco de tarjeta se conservan como están.
+Admin puede renombrarlos y cambiar horas desde `/app/settings` (sección nueva "Turnos"). Vendedoras los usan como están.
 
-### 4) Móvil: legibilidad y velocidad
-En pantallas de uso diario (venta, inventario, caja, mi nómina) sin rediseñar:
-- Botones principales `h-12`, inputs numéricos con `inputMode="decimal"` y `text-lg`.
-- Cabeceras con el patrón responsive de grid + `min-w-0` + `truncate` para no cortar títulos.
-- Tarjetas de producto en Venta más grandes con thumbnail (`photo_thumb_url` ya disponible) y precio prominente.
-- Carga optimista desde IndexedDB en la primera pintura del buscador de venta para que aparezca instantáneo aunque la red esté lenta.
-- Verificar `loading="lazy"` + `decoding="async"` + `width/height` en la grilla de venta (ya se hizo en inventario).
+## Editar (todas las profiles)
+- Click en una celda vacía → mini popover: elegir empleada + turno + hora opcional (para variantes tipo "9AM-2PM"). Guardar.
+- Click en un bloque existente → editar hora / cambiar empleada / cambiar turno / eliminar.
+- Long-press o botón "×" para borrar rápido.
+- Selección múltiple: shift-click para borrar varios a la vez, con botón "Borrar seleccionados".
+- Todo con guardado optimista (aparece al instante, se sincroniza en segundo plano).
 
-### Archivos que cambian
-- `src/routes/app.payroll.tsx` — inputs de bono/finiquito, y modo edición para admin.
-- `src/routes/app.finance.tsx` — botón/diálogo de edición de recibos para admin.
-- `src/routes/app.sell.tsx` — flujo simplificado de método único, autollenado del monto, ocultar divisa cuando no aplica, tarjetas más grandes, precarga desde IDB.
-- Ajustes menores en `src/components/app-shell.tsx` si el header pisa contenido en móvil.
-- Migración RLS de `payroll_payments` **sólo si** la revisión muestra que admin no puede editar todos los recibos (se plantea como migración aparte con aprobación).
+## Copiar / pegar / limpiar
+Menú "Copiar semana":
+- **Copiar de** → elegir semana origen (semana anterior por defecto).
+- **Pegar en** → semana actual u otra que elijas.
+- Opción: reemplazar todo o sólo agregar donde esté vacío.
+- Botón **Limpiar semana** con confirmación.
 
-### Fuera de alcance
-- No cambio otras tablas ni módulos (Finanzas, RRHH, Reportes intactos salvo el bloque de nómina).
-- No toco paleta ni logo.
+## Descargar como imagen (para WhatsApp)
+Botón "Descargar imagen":
+- Renderiza la semana visible a PNG usando `html-to-image` (ligero, funciona en móvil).
+- Formato vertical apto WhatsApp, con logo CAsitakin arriba y rango de fechas.
+- Se descarga como `horario-2026-07-13.png`; en móvil abre el share sheet nativo si está disponible.
 
-### Preguntas
-1. Para **efectivo en USD/EUR**, ¿autollenar el monto convertido al total o dejarlo vacío como hoy?
-2. En **tarjeta**, ¿el comprobante (foto del voucher) sigue obligatorio o lo hago opcional para acelerar el cobro?
+## Datos (Lovable Cloud)
+
+Migración nueva:
+
+```text
+schedule_shifts
+  code (text, unique)  -- 'morning' | 'afternoon' | 'off'
+  label (text)         -- 'Mañana', 'Tarde', 'Descanso'
+  start_time, end_time (time, nullable)
+  color (text)         -- token de color
+  sort_order (int)
+
+schedule_entries
+  work_date (date)
+  shift_id (fk schedule_shifts)
+  employee_id (fk employees)  -- puede ser null si es texto libre
+  label_override (text, nullable)  -- ej. '9AM-2PM' cuando cambia la hora
+  note (text, nullable)
+  created_by (fk profiles)
+  unique(work_date, shift_id, employee_id)
+```
+
+RLS: SELECT/INSERT/UPDATE/DELETE para cualquier usuario activo (admin o vendedora activa) usando `is_active_seller_or_admin(auth.uid())`. Grants a `authenticated` y `service_role`.
+
+Seed inicial de los 3 turnos con horarios de la foto.
+
+## Archivos que se crean o cambian
+- Migración con las dos tablas + seed de turnos + RLS/grants.
+- `src/routes/app.schedule.tsx` — vista calendario, edición, copia, descarga PNG.
+- `src/components/schedule-cell.tsx` — celda editable con popover.
+- `src/components/app-shell.tsx` — nuevo ítem "Horarios" en nav (bottom mobile + sidebar desktop).
+- `src/routes/app.settings.tsx` — bloque para editar los 3 turnos (solo admin).
+- `bun add html-to-image` para exportar PNG.
+
+## Fuera de alcance
+- No se toca nómina ni asistencias reales (los horarios son sólo planeación visual).
+- No hay notificaciones ni recordatorios automáticos por ahora.
+- No hay vista mensual, sólo semanal (con navegación entre semanas).
