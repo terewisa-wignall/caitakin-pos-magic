@@ -22,6 +22,7 @@ const items: NavItem[] = [
   { to: "/app/inventory", label: "Inventario", icon: Package },
   { to: "/app/cash", label: "Caja", icon: Wallet },
   { to: "/app/payroll", label: "Mi nómina", icon: ReceiptText },
+  { to: "/app/schedule", label: "Horarios", icon: CalendarDays },
   { to: "/app/reports", label: "Reportes", icon: BarChart3, adminOnly: true },
   { to: "/app/commissions", label: "Comisiones", icon: Coins },
   { to: "/app/finance", label: "Finanzas", icon: Landmark, adminOnly: true },
