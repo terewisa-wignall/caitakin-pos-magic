@@ -177,8 +177,7 @@ function SchedulePage() {
               <p className="text-lg font-semibold leading-none">{fmtDayNum(d)}</p>
             </div>
           ))}
-          {(shifts.data ?? []).map((s: any) => (
-            <>
+          {(shifts.data ?? []).flatMap((s: any) => [
               <div key={`h-${s.id}`} className="border-b border-r p-2 flex flex-col justify-center">
                 <p className="text-sm font-semibold">{s.label}</p>
                 {s.start_time && <p className="text-[11px] text-muted-foreground">{s.start_time.slice(0,5)}–{s.end_time?.slice(0,5)}</p>}
