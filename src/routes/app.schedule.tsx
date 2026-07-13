@@ -181,7 +181,7 @@ function SchedulePage() {
               <div key={`h-${s.id}`} className="border-b border-r p-2 flex flex-col justify-center">
                 <p className="text-sm font-semibold">{s.label}</p>
                 {s.start_time && <p className="text-[11px] text-muted-foreground">{s.start_time.slice(0,5)}–{s.end_time?.slice(0,5)}</p>}
-              </div>
+              </div>,
               ...days.map((d) => {
                 const key = `${isoDate(d)}|${s.id}`;
                 const list = grouped.get(key) ?? [];
