@@ -375,7 +375,7 @@ function EditEntryDialog({ entry, onClose, employees, shifts, onSaved }: any) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useMemo(() => {
+  useEffect(() => {
     if (entry) {
       setEmployeeId(entry.employee_id ?? "");
       setShiftId(entry.shift_id);
