@@ -296,7 +296,7 @@ function AddEntryDialog({ open, onClose, context, employees, shifts, userId, onS
   const [saving, setSaving] = useState(false);
 
   // Sync when opened
-  useMemo(() => {
+  useEffect(() => {
     if (open && context) {
       setShiftId(context.shiftId);
       setEmployeeId("");
