@@ -182,7 +182,7 @@ function SchedulePage() {
                 <p className="text-sm font-semibold">{s.label}</p>
                 {s.start_time && <p className="text-[11px] text-muted-foreground">{s.start_time.slice(0,5)}–{s.end_time?.slice(0,5)}</p>}
               </div>
-              {days.map((d) => {
+              ...days.map((d) => {
                 const key = `${isoDate(d)}|${s.id}`;
                 const list = grouped.get(key) ?? [];
                 return (
@@ -198,7 +198,7 @@ function SchedulePage() {
                           <span
                             key={e.id}
                             onClick={(ev) => { ev.stopPropagation(); setEditEntry(e); }}
-                            className={`rounded px-2 py-1 text-xs border ${shiftClasses(s.color)} truncate`}
+                            className={`rounded px-2 py-1 text-xs border ${shiftClasses(s.color)} truncate cursor-pointer`}
                           >
                             <span className="font-medium">{emp?.name ?? "—"}</span>
                             {e.label_override && <span className="opacity-80"> · {e.label_override}</span>}
@@ -209,9 +209,8 @@ function SchedulePage() {
                     </div>
                   </button>
                 );
-              })}
-            </>
-          ))}
+              }),
+          ])}
         </div>
 
         {/* Mobile: por día */}
