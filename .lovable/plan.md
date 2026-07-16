@@ -1,76 +1,44 @@
-# Horarios semanales (nueva sección)
+# Limpiar ventas de prueba y habilitar edición de ventas
 
-Nueva ruta `/app/schedule` visible para admin y vendedoras desde la navegación.
+## 1. Reset de datos de prueba
+Borrar todo lo generado por las pruebas y devolver el stock:
+- Regresar stock: por cada `order_items.variant_id`, sumar la `quantity` a `product_variants.stock`.
+- Borrar `payments`, `commissions`, `tickets`, `order_items`, `shift_handoffs` (referencias a órdenes), y finalmente `orders`.
+- Dejar intactos: productos, variantes (con stock restaurado), categorías, empleados, nómina, gastos, horarios, usuarias, cajas cerradas (se pueden dejar o limpiar — pregunto abajo).
 
-## Vista principal
-- Calendario semanal tipo Google Calendar: 7 columnas (Lun-Dom) con fecha del día arriba.
-- Bloques de color por turno: **Mañana** (verde suave), **Tarde** (terracota), **Descanso** (gris/dorado) — paleta actual.
-- Cada bloque muestra el nombre de la empleada y hora (ej. "Mirna · 9AM-2PM"). Se pueden apilar varias empleadas en el mismo turno/día.
-- Header con: semana actual (rango de fechas), flechas ← →, botón "Hoy", selector de semana, botón "Descargar imagen" y botón "Copiar semana".
+## 2. Migración: fecha real de venta + auditoría + restauración de stock
+- `orders`: nueva columna `sold_at timestamptz NOT NULL DEFAULT now()`. Todas las consultas y reportes actuales que agrupan por `created_at` pasan a usar `sold_at` (el `created_at` queda como marca de captura).
+- Trigger `restore_variant_stock_on_delete`: al borrar un `order_items` con `variant_id`, sumar `quantity` de vuelta a la variante.
+- Trigger `adjust_variant_stock_on_update`: si cambia `quantity` o `variant_id` de un `order_items`, ajustar stock (devolver el anterior, descontar el nuevo, validar suficiencia).
+- Trigger `sync_commission_on_order_update`: si cambia `orders.total`, recalcular `commissions.commission_amount` (rate × total).
+- Nueva tabla `order_audit_log` (id, order_id, action `create|update|delete`, changed_by, changed_at, diff jsonb, note text). RLS: INSERT permitido a la usuaria activa; SELECT sólo admin. GRANTs correctos.
+- Triggers `AFTER INSERT/UPDATE/DELETE` en `orders` que escriben en `order_audit_log` con el diff y `auth.uid()`.
+- Políticas RLS ampliadas: vendedora activa puede `UPDATE`/`DELETE` sus propias órdenes (`seller_id = auth.uid()`), admin cualquier orden. Igual para `order_items` y `payments` de esas órdenes.
 
-## Turnos fijos (editables en Configuración)
-Tres turnos base guardados en tabla `schedule_shifts`:
-- Mañana · 09:00-15:45
-- Tarde · 15:45-22:30
-- Descanso · (sin hora)
+## 3. UI — Registrar ventas de otros días
+En `src/routes/app.sell.tsx`, agregar antes de cobrar un campo opcional **Fecha de la venta** (date + hora, default = ahora). Se envía a `orders.sold_at`. Si es distinto a hoy, mostrar aviso "Registrando venta atrasada del X".
 
-Admin puede renombrarlos y cambiar horas desde `/app/settings` (sección nueva "Turnos"). Vendedoras los usan como están.
+## 4. UI — Editar/borrar ventas
+Nueva ruta `src/routes/app.sales.tsx` (menú "Ventas") con:
+- Lista de últimas 60 días de órdenes propias (vendedora) o de todas (admin), con filtros por fecha/vendedora.
+- Cada renglón: fecha, vendedora, total, método(s), botones **Editar** y **Borrar**.
+- **Editar**: diálogo para cambiar `sold_at`, cantidad de cada item, agregar/quitar items, cambiar método de pago; recalcula subtotal/total; pide **nota obligatoria** ("¿por qué se edita?") que se guarda en el audit log.
+- **Borrar**: confirma, pide nota, borra la orden (los triggers restauran stock y borran comisiones/pagos en cascada), queda registro en audit log.
+- Sub-tab **Historial de cambios** (admin) que lee `order_audit_log`.
+- Enlace en bottom-nav móvil y sidebar.
 
-## Editar (todas las profiles)
-- Click en una celda vacía → mini popover: elegir empleada + turno + hora opcional (para variantes tipo "9AM-2PM"). Guardar.
-- Click en un bloque existente → editar hora / cambiar empleada / cambiar turno / eliminar.
-- Long-press o botón "×" para borrar rápido.
-- Selección múltiple: shift-click para borrar varios a la vez, con botón "Borrar seleccionados".
-- Todo con guardado optimista (aparece al instante, se sincroniza en segundo plano).
+## 5. Ticket público
+No cambia; `t/$token` sigue funcionando. Si se borra la orden, el ticket devuelve "Venta cancelada".
 
-## Copiar / pegar / limpiar
-Menú "Copiar semana":
-- **Copiar de** → elegir semana origen (semana anterior por defecto).
-- **Pegar en** → semana actual u otra que elijas.
-- Opción: reemplazar todo o sólo agregar donde esté vacío.
-- Botón **Limpiar semana** con confirmación.
+## Archivos
+- Migración nueva (schema + triggers + RLS + tabla audit).
+- Insert masivo para reset (con restauración de stock previa).
+- `src/routes/app.sell.tsx` (campo fecha).
+- `src/routes/app.sales.tsx` (nuevo — lista/editar/borrar/historial).
+- `src/routes/app.reports.tsx` y `src/routes/app.dashboard.tsx` (usar `sold_at`).
+- `src/components/app-shell.tsx` (nuevo ítem "Ventas").
+- `src/lib/tickets.functions.ts` (mensaje si la orden ya no existe).
 
-## Descargar como imagen (para WhatsApp)
-Botón "Descargar imagen":
-- Renderiza la semana visible a PNG usando `html-to-image` (ligero, funciona en móvil).
-- Formato vertical apto WhatsApp, con logo CAsitakin arriba y rango de fechas.
-- Se descarga como `horario-2026-07-13.png`; en móvil abre el share sheet nativo si está disponible.
-
-## Datos (Lovable Cloud)
-
-Migración nueva:
-
-```text
-schedule_shifts
-  code (text, unique)  -- 'morning' | 'afternoon' | 'off'
-  label (text)         -- 'Mañana', 'Tarde', 'Descanso'
-  start_time, end_time (time, nullable)
-  color (text)         -- token de color
-  sort_order (int)
-
-schedule_entries
-  work_date (date)
-  shift_id (fk schedule_shifts)
-  employee_id (fk employees)  -- puede ser null si es texto libre
-  label_override (text, nullable)  -- ej. '9AM-2PM' cuando cambia la hora
-  note (text, nullable)
-  created_by (fk profiles)
-  unique(work_date, shift_id, employee_id)
-```
-
-RLS: SELECT/INSERT/UPDATE/DELETE para cualquier usuario activo (admin o vendedora activa) usando `is_active_seller_or_admin(auth.uid())`. Grants a `authenticated` y `service_role`.
-
-Seed inicial de los 3 turnos con horarios de la foto.
-
-## Archivos que se crean o cambian
-- Migración con las dos tablas + seed de turnos + RLS/grants.
-- `src/routes/app.schedule.tsx` — vista calendario, edición, copia, descarga PNG.
-- `src/components/schedule-cell.tsx` — celda editable con popover.
-- `src/components/app-shell.tsx` — nuevo ítem "Horarios" en nav (bottom mobile + sidebar desktop).
-- `src/routes/app.settings.tsx` — bloque para editar los 3 turnos (solo admin).
-- `bun add html-to-image` para exportar PNG.
-
-## Fuera de alcance
-- No se toca nómina ni asistencias reales (los horarios son sólo planeación visual).
-- No hay notificaciones ni recordatorios automáticos por ahora.
-- No hay vista mensual, sólo semanal (con navegación entre semanas).
+## Pregunta rápida
+1. Además de las ventas, ¿borro también las **cajas** (sesiones y movimientos) y los **cierres de turno** de prueba, o los dejo?
+2. ¿Las vendedoras pueden editar/borrar ventas de **cualquier fecha** o sólo de los **últimos 7 días** (admin sin límite)?

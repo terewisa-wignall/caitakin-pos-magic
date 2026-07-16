@@ -88,6 +88,12 @@ function SellPage() {
   const [customerIdFile, setCustomerIdFile] = useState<File | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [ticket, setTicket] = useState<{ token: string; total: number } | null>(null);
+  // Local datetime for backdating sales. Default = now.
+  const [soldAtLocal, setSoldAtLocal] = useState<string>(() => {
+    const d = new Date(); d.setSeconds(0, 0);
+    const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
+  });
 
   const cats = useQuery({
     queryKey: ["categories"],
@@ -212,6 +218,7 @@ function SellPage() {
       const rate = currency === "MXN" ? 1 : (rates.data?.[currency] ?? 1);
       const totalInCurrency = currency === "MXN" ? totalMxn : totalMxn / rate;
 
+      const soldAtIso = soldAtLocal ? new Date(soldAtLocal).toISOString() : new Date().toISOString();
       const { data: order, error: orderErr } = await supabase.from("orders").insert({
         seller_id: user.id,
         subtotal: subtotalMxn,
@@ -219,6 +226,7 @@ function SellPage() {
         total: totalInCurrency,
         currency,
         exchange_rate_used: rate,
+        sold_at: soldAtIso,
       }).select("id").single();
       if (orderErr || !order) throw orderErr || new Error("No se pudo crear la orden");
 
@@ -344,6 +352,7 @@ function SellPage() {
           payments={payments} setPayments={setPayments}
           paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
           customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
+          soldAtLocal={soldAtLocal} setSoldAtLocal={setSoldAtLocal}
           updateQty={updateQty} removeLine={removeLine}
           checkout={() => checkout.mutate()} loading={checkout.isPending}
         />
@@ -366,6 +375,7 @@ function SellPage() {
             payments={payments} setPayments={setPayments}
             paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
             customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
+            soldAtLocal={soldAtLocal} setSoldAtLocal={setSoldAtLocal}
             updateQty={updateQty} removeLine={removeLine}
             checkout={() => checkout.mutate()} loading={checkout.isPending}
           />
@@ -434,7 +444,8 @@ function SellPage() {
 
 function CartPanel({
   cart, subtotalMxn, totalMxn, totalDisplay, discount, setDiscount, currency, setCurrency,
-  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile, updateQty, removeLine, checkout, loading,
+  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile,
+  soldAtLocal, setSoldAtLocal, updateQty, removeLine, checkout, loading,
 }: any) {
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
@@ -507,6 +518,24 @@ function CartPanel({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div>
+          <Label className="text-xs">Fecha de la venta</Label>
+          <Input
+            type="datetime-local"
+            value={soldAtLocal}
+            onChange={(e) => setSoldAtLocal(e.target.value)}
+            className="font-numeric"
+          />
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10);
+            const chosen = (soldAtLocal || "").slice(0, 10);
+            if (chosen && chosen !== today) {
+              return <p className="text-[11px] text-amber-700 mt-1">Registrando venta atrasada del {chosen}</p>;
+            }
+            return null;
+          })()}
         </div>
 
         <div className="flex justify-between text-sm"><span>Subtotal</span><span className="font-numeric">{formatMoney(subtotalMxn)}</span></div>

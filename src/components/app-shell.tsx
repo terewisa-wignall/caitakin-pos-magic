@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet, BarChart3,
   Settings, Users, Coins, LogOut, Menu, Landmark, IdCard, ReceiptText,
-  Truck, CalendarDays,
+  Truck, CalendarDays, ListOrdered,
 } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 const logo = logoAsset.url;
@@ -19,6 +19,7 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminO
 const items: NavItem[] = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
   { to: "/app/sell", label: "Vender", icon: ShoppingCart },
+  { to: "/app/sales", label: "Ventas", icon: ListOrdered },
   { to: "/app/inventory", label: "Inventario", icon: Package },
   { to: "/app/cash", label: "Caja", icon: Wallet },
   { to: "/app/payroll", label: "Mi nómina", icon: ReceiptText },

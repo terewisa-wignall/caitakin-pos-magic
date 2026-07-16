@@ -27,7 +27,7 @@ function Dashboard() {
     queryKey: ["dashboard-stats", isAdmin, profile?.id],
     queryFn: async () => {
       const todayIso = today.toISOString();
-      let q = supabase.from("orders").select("id,total,currency,created_at,seller_id").gte("created_at", todayIso);
+      let q = supabase.from("orders").select("id,total,currency,sold_at,seller_id").gte("sold_at", todayIso);
       if (!isAdmin && profile?.id) q = q.eq("seller_id", profile.id);
       const { data: orders } = await q;
 
