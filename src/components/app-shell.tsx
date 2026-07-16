@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet, BarChart3,
   Settings, Users, Coins, LogOut, Menu, Landmark, IdCard, ReceiptText,
-  Truck, CalendarDays,
+  Truck, CalendarDays, ListOrdered,
 } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 const logo = logoAsset.url;
