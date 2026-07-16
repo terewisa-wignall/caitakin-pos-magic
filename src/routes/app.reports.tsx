@@ -54,8 +54,8 @@ function ReportsPage() {
   const byDay = (() => {
     const map: Record<string, number> = {};
     (orders.data ?? []).forEach((o: any) => {
-      const day = new Date(o.created_at).toISOString().slice(0, 10);
-      const rate = o.currency === "MXN" ? 1 : 18.5; // fallback aprox
+      const day = new Date(o.sold_at).toISOString().slice(0, 10);
+      const rate = o.currency === "MXN" ? 1 : 18.5;
       map[day] = (map[day] || 0) + Number(o.total) * rate;
     });
     return Object.entries(map).sort().map(([day, total]) => ({ day: day.slice(5), total: Math.round(total) }));
