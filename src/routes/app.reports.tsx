@@ -25,7 +25,7 @@ function ReportsPage() {
   const orders = useQuery({
     queryKey: ["report-orders", isAdmin, profile?.id],
     queryFn: async () => {
-      let q = supabase.from("orders").select("id,total,currency,created_at,seller_id").gte("created_at", since.toISOString());
+      let q = supabase.from("orders").select("id,total,currency,sold_at,seller_id").gte("sold_at", since.toISOString());
       if (!isAdmin && profile?.id) q = q.eq("seller_id", profile.id);
       return (await q).data ?? [];
     },
