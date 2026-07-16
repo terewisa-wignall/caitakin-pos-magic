@@ -225,10 +225,7 @@ function EditOrderDialog({ order, onClose, onSaved }: { order: OrderRow; onClose
     mutationFn: async () => {
       if (!note.trim()) throw new Error("Escribe una nota del cambio");
 
-      // 1) Set audit note in session so trigger picks it up
-      await supabase.rpc as any; // no-op; not available. Use SETting via SQL is not exposed → we insert audit row manually after.
-
-      // 2) Update items: qty changes
+      // Update items: qty changes / removals
       for (const r of rows) {
         if (r.removed) {
           const { error } = await supabase.from("order_items").delete().eq("id", r.id);
