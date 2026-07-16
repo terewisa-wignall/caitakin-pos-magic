@@ -19,6 +19,7 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminO
 const items: NavItem[] = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
   { to: "/app/sell", label: "Vender", icon: ShoppingCart },
+  { to: "/app/sales", label: "Ventas", icon: ListOrdered },
   { to: "/app/inventory", label: "Inventario", icon: Package },
   { to: "/app/cash", label: "Caja", icon: Wallet },
   { to: "/app/payroll", label: "Mi nómina", icon: ReceiptText },
