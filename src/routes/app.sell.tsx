@@ -520,6 +520,24 @@ function CartPanel({
           </div>
         </div>
 
+        <div>
+          <Label className="text-xs">Fecha de la venta</Label>
+          <Input
+            type="datetime-local"
+            value={soldAtLocal}
+            onChange={(e) => setSoldAtLocal(e.target.value)}
+            className="font-numeric"
+          />
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10);
+            const chosen = (soldAtLocal || "").slice(0, 10);
+            if (chosen && chosen !== today) {
+              return <p className="text-[11px] text-amber-700 mt-1">Registrando venta atrasada del {chosen}</p>;
+            }
+            return null;
+          })()}
+        </div>
+
         <div className="flex justify-between text-sm"><span>Subtotal</span><span className="font-numeric">{formatMoney(subtotalMxn)}</span></div>
         <div className="flex justify-between text-sm"><span>Descuento</span><span className="font-numeric">−{formatMoney(discount)}</span></div>
         <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-numeric text-primary">{formatMoney(totalDisplay, currency)}</span></div>
