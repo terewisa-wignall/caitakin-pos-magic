@@ -444,7 +444,8 @@ function SellPage() {
 
 function CartPanel({
   cart, subtotalMxn, totalMxn, totalDisplay, discount, setDiscount, currency, setCurrency,
-  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile, updateQty, removeLine, checkout, loading,
+  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile,
+  soldAtLocal, setSoldAtLocal, updateQty, removeLine, checkout, loading,
 }: any) {
   const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
   const showCustomerIdReminder = totalMxn > 1000;
