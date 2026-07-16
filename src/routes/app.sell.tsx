@@ -88,6 +88,12 @@ function SellPage() {
   const [customerIdFile, setCustomerIdFile] = useState<File | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [ticket, setTicket] = useState<{ token: string; total: number } | null>(null);
+  // Local datetime for backdating sales. Default = now.
+  const [soldAtLocal, setSoldAtLocal] = useState<string>(() => {
+    const d = new Date(); d.setSeconds(0, 0);
+    const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
+  });
 
   const cats = useQuery({
     queryKey: ["categories"],
