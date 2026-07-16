@@ -352,6 +352,7 @@ function SellPage() {
           payments={payments} setPayments={setPayments}
           paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
           customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
+          soldAtLocal={soldAtLocal} setSoldAtLocal={setSoldAtLocal}
           updateQty={updateQty} removeLine={removeLine}
           checkout={() => checkout.mutate()} loading={checkout.isPending}
         />
