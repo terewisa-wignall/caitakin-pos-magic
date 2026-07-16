@@ -738,6 +738,36 @@ export type Database = {
         }
         Relationships: []
       }
+      order_audit_log: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by: string | null
+          diff: Json | null
+          id: string
+          note: string | null
+          order_id: string
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          changed_by?: string | null
+          diff?: Json | null
+          id?: string
+          note?: string | null
+          order_id: string
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by?: string | null
+          diff?: Json | null
+          id?: string
+          note?: string | null
+          order_id?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -811,6 +841,7 @@ export type Database = {
           id: string
           payment_status: string
           seller_id: string
+          sold_at: string
           subtotal: number
           total: number
         }
@@ -825,6 +856,7 @@ export type Database = {
           id?: string
           payment_status?: string
           seller_id: string
+          sold_at?: string
           subtotal?: number
           total?: number
         }
@@ -839,6 +871,7 @@ export type Database = {
           id?: string
           payment_status?: string
           seller_id?: string
+          sold_at?: string
           subtotal?: number
           total?: number
         }
