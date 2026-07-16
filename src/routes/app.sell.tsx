@@ -218,6 +218,7 @@ function SellPage() {
       const rate = currency === "MXN" ? 1 : (rates.data?.[currency] ?? 1);
       const totalInCurrency = currency === "MXN" ? totalMxn : totalMxn / rate;
 
+      const soldAtIso = soldAtLocal ? new Date(soldAtLocal).toISOString() : new Date().toISOString();
       const { data: order, error: orderErr } = await supabase.from("orders").insert({
         seller_id: user.id,
         subtotal: subtotalMxn,
@@ -225,6 +226,7 @@ function SellPage() {
         total: totalInCurrency,
         currency,
         exchange_rate_used: rate,
+        sold_at: soldAtIso,
       }).select("id").single();
       if (orderErr || !order) throw orderErr || new Error("No se pudo crear la orden");
 
