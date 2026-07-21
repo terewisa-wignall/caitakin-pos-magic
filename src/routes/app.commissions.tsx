@@ -347,7 +347,7 @@ function CommissionsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiptRows([])}>Cerrar</Button>
-            <Button onClick={() => printableReceipt(receiptRows, sellerName, cutoff.label)}>
+            <Button onClick={() => printableReceipt(receiptRows, receiptSellerName || sellerName, cutoff.label)}>
               <Printer className="h-4 w-4 mr-1" /> Imprimir / PDF
             </Button>
           </DialogFooter>
