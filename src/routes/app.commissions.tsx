@@ -257,6 +257,9 @@ function CommissionsPage() {
 
       <Card className="p-3 space-y-3">
         <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {isAdmin && (
+            <Button size="sm" variant={mode === "by-seller" ? "default" : "outline"} onClick={() => setMode("by-seller")} className="shrink-0">Por vendedora</Button>
+          )}
           <Button size="sm" variant={mode === "cutoff" ? "default" : "outline"} onClick={() => setMode("cutoff")} className="shrink-0">Corte actual</Button>
           <Button size="sm" variant={mode === "pending" ? "default" : "outline"} onClick={() => setMode("pending")} className="shrink-0">Pendientes</Button>
           <Button size="sm" variant={mode === "paid" ? "default" : "outline"} onClick={() => setMode("paid")} className="shrink-0">Pagadas</Button>
@@ -266,31 +269,63 @@ function CommissionsPage() {
         </p>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        <ul className="divide-y">
-          {visibleRows.map((c) => (
-            <li key={c.id} className="p-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium truncate">{isAdmin ? c.profile?.name || "—" : "Venta comisionada"}</p>
-                  <Badge variant={c.paid_at ? "secondary" : "outline"} className="text-[10px]">
-                    {c.paid_at ? "Pagada" : "Pendiente"}
-                  </Badge>
+      {mode === "by-seller" && isAdmin ? (
+        <Card className="p-0 overflow-hidden">
+          <ul className="divide-y">
+            {bySeller.map((s) => (
+              <li key={s.sellerId} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="font-medium truncate">{s.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">Corte {formatMoney(s.cutoffTotal)}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">Pendiente {formatMoney(s.pendingTotal)}</Badge>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(c.created_at)} · {c.commission_rate}% · Venta {formatMoney(Number(c.order?.total || 0), (c.order?.currency || "MXN") as never)}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={s.cutoffRows.length === 0}
+                    onClick={() => { setReceiptSellerName(s.name); setReceiptRows(s.cutoffRows); }}>
+                    <ReceiptText className="h-3.5 w-3.5 mr-1" /> Recibo corte
+                  </Button>
+                  <Button size="sm" disabled={s.cutoffRows.length === 0 || paying === s.sellerId}
+                    onClick={() => markCutoffPaid(s.sellerId, s.name, s.cutoffRows)}>
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    {paying === s.sellerId ? "Marcando..." : "Marcar corte pagado"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+            {bySeller.length === 0 && (
+              <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones pendientes por vendedora</li>
+            )}
+          </ul>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <ul className="divide-y">
+            {visibleRows.map((c) => (
+              <li key={c.id} className="p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium truncate">{isAdmin ? c.profile?.name || "—" : "Venta comisionada"}</p>
+                    <Badge variant={c.paid_at ? "secondary" : "outline"} className="text-[10px]">
+                      {c.paid_at ? "Pagada" : "Pendiente"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(c.created_at)} · {c.commission_rate}% · Venta {formatMoney(Number(c.order?.total || 0), (c.order?.currency || "MXN") as never)}
+                  </p>
+                </div>
+                <p className="font-numeric font-semibold text-accent-foreground shrink-0">
+                  {formatMoney(Number(c.commission_amount), c.currency as never)}
                 </p>
-              </div>
-              <p className="font-numeric font-semibold text-accent-foreground shrink-0">
-                {formatMoney(Number(c.commission_amount), c.currency as never)}
-              </p>
-            </li>
-          ))}
-          {!q.isLoading && visibleRows.length === 0 && (
-            <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones en esta vista</li>
-          )}
-        </ul>
-      </Card>
+              </li>
+            ))}
+            {!q.isLoading && visibleRows.length === 0 && (
+              <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones en esta vista</li>
+            )}
+          </ul>
+        </Card>
+      )}
 
       <Dialog open={receiptRows.length > 0} onOpenChange={(open) => !open && setReceiptRows([])}>
         <DialogContent>
