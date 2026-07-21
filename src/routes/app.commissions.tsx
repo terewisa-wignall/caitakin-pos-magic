@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { formatMoney, formatDate, formatDateShort } from "@/lib/format";
-import { Printer, ReceiptText } from "lucide-react";
+import { toast } from "sonner";
+import { Printer, ReceiptText, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/app/commissions")({
   head: () => ({ meta: [{ title: "Comisiones · CAsitakin" }] }),
@@ -28,7 +29,7 @@ type CommissionRow = {
   order: { id: string; total: number; currency: string; created_at: string } | null;
 };
 
-type ViewMode = "cutoff" | "pending" | "paid";
+type ViewMode = "cutoff" | "pending" | "paid" | "by-seller";
 
 function startOfDayISO() {
   const d = new Date();
@@ -121,8 +122,11 @@ function printableReceipt(rows: CommissionRow[], sellerName: string, label: stri
 
 function CommissionsPage() {
   const { profile, isAdmin } = useAuth();
-  const [mode, setMode] = useState<ViewMode>("cutoff");
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<ViewMode>(isAdmin ? "by-seller" : "cutoff");
   const [receiptRows, setReceiptRows] = useState<CommissionRow[]>([]);
+  const [receiptSellerName, setReceiptSellerName] = useState<string>("");
+  const [paying, setPaying] = useState<string | null>(null);
   const cutoff = useMemo(() => commissionCutoff(), []);
 
   const q = useQuery({
@@ -166,11 +170,56 @@ function CommissionsPage() {
   const cutoffRows = rows.filter((c) => !c.paid_at && new Date(c.created_at) >= cutoff.start && new Date(c.created_at) <= cutoff.end);
   const pendingRows = rows.filter((c) => !c.paid_at);
   const paidRows = rows.filter((c) => c.paid_at);
-  const visibleRows = mode === "cutoff" ? cutoffRows : mode === "pending" ? pendingRows : paidRows;
+  const visibleRows = mode === "cutoff" ? cutoffRows : mode === "pending" ? pendingRows : mode === "paid" ? paidRows : [];
   const totalCutoff = cutoffRows.reduce((s, c) => s + Number(c.commission_amount), 0);
   const totalPending = pendingRows.reduce((s, c) => s + Number(c.commission_amount), 0);
-  const totalPaid = paidRows.reduce((s, c) => s + Number(c.commission_amount), 0);
   const sellerName = profile?.name || "Vendedora";
+
+  // Group by seller (admin only view)
+  const bySeller = useMemo(() => {
+    const map = new Map<string, { sellerId: string; name: string; cutoffTotal: number; pendingTotal: number; cutoffRows: CommissionRow[]; pendingRows: CommissionRow[] }>();
+    rows.forEach((c) => {
+      const key = c.seller_id;
+      const entry = map.get(key) ?? { sellerId: key, name: c.profile?.name || "—", cutoffTotal: 0, pendingTotal: 0, cutoffRows: [], pendingRows: [] };
+      if (!c.paid_at) {
+        entry.pendingTotal += Number(c.commission_amount);
+        entry.pendingRows.push(c);
+        if (new Date(c.created_at) >= cutoff.start && new Date(c.created_at) <= cutoff.end) {
+          entry.cutoffTotal += Number(c.commission_amount);
+          entry.cutoffRows.push(c);
+        }
+      }
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.cutoffTotal - a.cutoffTotal);
+  }, [rows, cutoff.start, cutoff.end]);
+
+  const markCutoffPaid = async (sellerId: string, sellerName: string, rowsToPay: CommissionRow[]) => {
+    if (rowsToPay.length === 0) return;
+    if (!confirm(`Marcar como pagado el corte de ${sellerName} (${formatMoney(rowsToPay.reduce((s, c) => s + Number(c.commission_amount), 0))})?`)) return;
+    setPaying(sellerId);
+    const ids = rowsToPay.map((c) => c.id);
+    const total = rowsToPay.reduce((s, c) => s + Number(c.commission_amount), 0);
+    const nowIso = new Date().toISOString();
+    const { error: upErr } = await supabase
+      .from("commissions")
+      .update({ paid_at: nowIso, payment_method: "cash" })
+      .in("id", ids);
+    if (upErr) { setPaying(null); toast.error(upErr.message); return; }
+    await supabase.from("commission_payments").insert({
+      seller_id: sellerId,
+      total_amount: total,
+      currency: "MXN",
+      payment_method: "cash",
+      paid_at: nowIso,
+      cutoff_label: cutoff.label,
+      note: `Corte ${cutoff.label}`,
+    });
+    setPaying(null);
+    toast.success("Corte marcado como pagado");
+    qc.invalidateQueries({ queryKey: ["commissions"] });
+  };
+
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -178,7 +227,7 @@ function CommissionsPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Comisiones</h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? "Todas las comisiones" : "Mis comisiones y cortes de pago"}
+            {isAdmin ? "Comisiones de todas las vendedoras" : "Mis comisiones y cortes de pago"}
           </p>
         </div>
         {!isAdmin && (
@@ -208,6 +257,9 @@ function CommissionsPage() {
 
       <Card className="p-3 space-y-3">
         <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {isAdmin && (
+            <Button size="sm" variant={mode === "by-seller" ? "default" : "outline"} onClick={() => setMode("by-seller")} className="shrink-0">Por vendedora</Button>
+          )}
           <Button size="sm" variant={mode === "cutoff" ? "default" : "outline"} onClick={() => setMode("cutoff")} className="shrink-0">Corte actual</Button>
           <Button size="sm" variant={mode === "pending" ? "default" : "outline"} onClick={() => setMode("pending")} className="shrink-0">Pendientes</Button>
           <Button size="sm" variant={mode === "paid" ? "default" : "outline"} onClick={() => setMode("paid")} className="shrink-0">Pagadas</Button>
@@ -217,31 +269,63 @@ function CommissionsPage() {
         </p>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        <ul className="divide-y">
-          {visibleRows.map((c) => (
-            <li key={c.id} className="p-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium truncate">{isAdmin ? c.profile?.name || "—" : "Venta comisionada"}</p>
-                  <Badge variant={c.paid_at ? "secondary" : "outline"} className="text-[10px]">
-                    {c.paid_at ? "Pagada" : "Pendiente"}
-                  </Badge>
+      {mode === "by-seller" && isAdmin ? (
+        <Card className="p-0 overflow-hidden">
+          <ul className="divide-y">
+            {bySeller.map((s) => (
+              <li key={s.sellerId} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="font-medium truncate">{s.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">Corte {formatMoney(s.cutoffTotal)}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">Pendiente {formatMoney(s.pendingTotal)}</Badge>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(c.created_at)} · {c.commission_rate}% · Venta {formatMoney(Number(c.order?.total || 0), (c.order?.currency || "MXN") as never)}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={s.cutoffRows.length === 0}
+                    onClick={() => { setReceiptSellerName(s.name); setReceiptRows(s.cutoffRows); }}>
+                    <ReceiptText className="h-3.5 w-3.5 mr-1" /> Recibo corte
+                  </Button>
+                  <Button size="sm" disabled={s.cutoffRows.length === 0 || paying === s.sellerId}
+                    onClick={() => markCutoffPaid(s.sellerId, s.name, s.cutoffRows)}>
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    {paying === s.sellerId ? "Marcando..." : "Marcar corte pagado"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+            {bySeller.length === 0 && (
+              <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones pendientes por vendedora</li>
+            )}
+          </ul>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <ul className="divide-y">
+            {visibleRows.map((c) => (
+              <li key={c.id} className="p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium truncate">{isAdmin ? c.profile?.name || "—" : "Venta comisionada"}</p>
+                    <Badge variant={c.paid_at ? "secondary" : "outline"} className="text-[10px]">
+                      {c.paid_at ? "Pagada" : "Pendiente"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(c.created_at)} · {c.commission_rate}% · Venta {formatMoney(Number(c.order?.total || 0), (c.order?.currency || "MXN") as never)}
+                  </p>
+                </div>
+                <p className="font-numeric font-semibold text-accent-foreground shrink-0">
+                  {formatMoney(Number(c.commission_amount), c.currency as never)}
                 </p>
-              </div>
-              <p className="font-numeric font-semibold text-accent-foreground shrink-0">
-                {formatMoney(Number(c.commission_amount), c.currency as never)}
-              </p>
-            </li>
-          ))}
-          {!q.isLoading && visibleRows.length === 0 && (
-            <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones en esta vista</li>
-          )}
-        </ul>
-      </Card>
+              </li>
+            ))}
+            {!q.isLoading && visibleRows.length === 0 && (
+              <li className="p-8 text-center text-muted-foreground text-sm">Sin comisiones en esta vista</li>
+            )}
+          </ul>
+        </Card>
+      )}
 
       <Dialog open={receiptRows.length > 0} onOpenChange={(open) => !open && setReceiptRows([])}>
         <DialogContent>
@@ -263,7 +347,7 @@ function CommissionsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiptRows([])}>Cerrar</Button>
-            <Button onClick={() => printableReceipt(receiptRows, sellerName, cutoff.label)}>
+            <Button onClick={() => printableReceipt(receiptRows, receiptSellerName || sellerName, cutoff.label)}>
               <Printer className="h-4 w-4 mr-1" /> Imprimir / PDF
             </Button>
           </DialogFooter>

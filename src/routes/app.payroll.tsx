@@ -1,27 +1,28 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Calculator, Download, FileText, Plus, Printer } from "lucide-react";
+import { Calculator, Download, FileText, Plus, Printer, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/app/payroll")({
   ssr: false,
-  head: () => ({ meta: [{ title: "Mi nómina · CAsitakin" }] }),
+  head: () => ({ meta: [{ title: "Nómina · CAsitakin" }] }),
   beforeLoad: async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });
   },
-  component: MyPayrollPage,
+  component: PayrollPage,
 });
 
 function dailyRateFromEmployee(emp: any) {
@@ -32,12 +33,20 @@ function labelFreq(f?: string | null) {
   return { daily: "diario", weekly: "semanal", biweekly: "quincenal", monthly: "mensual" }[f ?? ""] ?? f;
 }
 
-function MyPayrollPage() {
+function PayrollPage() {
+  const { isAdmin, loading } = useAuth();
+  if (loading) return <div className="p-6 text-center text-sm text-muted-foreground">Cargando...</div>;
+  return isAdmin ? <AdminPayrollView /> : <MyPayrollView />;
+}
+
+/* ============================================================
+   Vista Vendedora — Mi nómina (sin cambios funcionales)
+   ============================================================ */
+function MyPayrollView() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
 
   const employee = useQuery({
     queryKey: ["my-employee", user?.id],
@@ -158,6 +167,325 @@ function MyPayrollPage() {
   );
 }
 
+/* ============================================================
+   Vista Admin — Nómina de todo el equipo
+   ============================================================ */
+function AdminPayrollView() {
+  const qc = useQueryClient();
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [receipt, setReceipt] = useState<{ payment: any; emp: any } | null>(null);
+
+  const monthStart = new Date(year, month, 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+  const yearStart = new Date(year, 0, 1).toISOString().slice(0, 10);
+  const yearEnd = new Date(year, 11, 31).toISOString().slice(0, 10);
+
+  const shiftMonth = (delta: number) => {
+    let m = month + delta, y = year;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setMonth(m); setYear(y);
+  };
+
+  const employees = useQuery({
+    queryKey: ["admin-payroll-employees"],
+    queryFn: async () => {
+      const { data } = await supabase.from("employees").select("*").order("is_active", { ascending: false }).order("name");
+      return data ?? [];
+    },
+  });
+
+  const yearPayments = useQuery({
+    queryKey: ["admin-payroll-year", year],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("payroll_payments")
+        .select("*")
+        .gte("paid_at", yearStart).lte("paid_at", yearEnd);
+      return data ?? [];
+    },
+  });
+
+  const detail = useQuery({
+    queryKey: ["admin-payroll-detail", selectedEmpId],
+    enabled: !!selectedEmpId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("payroll_payments")
+        .select("*")
+        .eq("employee_id", selectedEmpId!)
+        .order("paid_at", { ascending: false })
+        .limit(120);
+      return data ?? [];
+    },
+  });
+
+  const totalsByEmp = useMemo(() => {
+    const map = new Map<string, { month: number; year: number }>();
+    (yearPayments.data ?? []).forEach((p: any) => {
+      const entry = map.get(p.employee_id) ?? { month: 0, year: 0 };
+      entry.year += Number(p.amount) || 0;
+      if (p.paid_at >= monthStart && p.paid_at <= monthEnd) entry.month += Number(p.amount) || 0;
+      map.set(p.employee_id, entry);
+    });
+    return map;
+  }, [yearPayments.data, monthStart, monthEnd]);
+
+  const totalMonthAll = useMemo(
+    () => (yearPayments.data ?? [])
+      .filter((p: any) => p.paid_at >= monthStart && p.paid_at <= monthEnd)
+      .reduce((s: number, p: any) => s + Number(p.amount), 0),
+    [yearPayments.data, monthStart, monthEnd],
+  );
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["admin-payroll-year"] });
+    qc.invalidateQueries({ queryKey: ["admin-payroll-detail", selectedEmpId] });
+  };
+
+  const selectedEmp = (employees.data ?? []).find((e: any) => e.id === selectedEmpId);
+
+  const removePayment = async (p: any) => {
+    if (!confirm("¿Eliminar este recibo?")) return;
+    const { error } = await supabase.from("payroll_payments").delete().eq("id", p.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Recibo eliminado");
+    refresh();
+  };
+
+  const MONTHS_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  return (
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
+      <header>
+        <h1 className="text-2xl md:text-3xl font-bold">Nómina</h1>
+        <p className="text-sm text-muted-foreground">Pagos de todo el equipo. Puedes generar, editar y borrar recibos.</p>
+      </header>
+
+      <Card className="p-3 flex items-center justify-between gap-2">
+        <Button variant="ghost" size="icon" onClick={() => shiftMonth(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+        <div className="text-center min-w-0">
+          <p className="font-semibold">{MONTHS_FULL[month]} {year}</p>
+          <p className="text-xs text-muted-foreground">Nómina del mes: <span className="font-semibold text-foreground">{formatMoney(totalMonthAll)}</span></p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => shiftMonth(1)}><ChevronRight className="h-4 w-4" /></Button>
+      </Card>
+
+      <Card className="p-4">
+        <h2 className="font-semibold mb-3 text-sm">Empleadas</h2>
+        <ul className="divide-y">
+          {(employees.data ?? []).map((e: any) => {
+            const t = totalsByEmp.get(e.id) ?? { month: 0, year: 0 };
+            return (
+              <li key={e.id} className="py-2.5 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate flex items-center gap-2">
+                    {e.name}
+                    {!e.is_active && <Badge variant="outline" className="text-[10px]">Inactiva</Badge>}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {e.position || "—"} · {formatMoney(Number(e.salary))} por día · {labelFreq(e.frequency)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground font-numeric">
+                    Mes {formatMoney(t.month)} · Año {formatMoney(t.year)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <Button size="sm" variant="outline" onClick={() => setSelectedEmpId(e.id)}>Historial</Button>
+                  <Button size="sm" onClick={() => setEditing({ mode: "new", emp: e })}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Recibo
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+          {(employees.data ?? []).length === 0 && (
+            <li className="py-6 text-center text-sm text-muted-foreground">
+              No hay empleadas. Ve a RRHH para agregar.
+            </li>
+          )}
+        </ul>
+      </Card>
+
+      <Dialog open={!!selectedEmpId} onOpenChange={(o) => !o && setSelectedEmpId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedEmp?.name || "Historial"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {(detail.data ?? []).map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 border rounded-lg p-3">
+                <div className="min-w-0">
+                  <p className="font-medium font-numeric">{formatMoney(Number(p.amount))}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateShort(p.paid_at)} · {formatDateShort(p.period_start)}–{formatDateShort(p.period_end)} · {p.payment_method || "—"}
+                  </p>
+                  {p.receipt_number && <p className="text-[11px] text-muted-foreground">{p.receipt_number}</p>}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReceipt({ payment: p, emp: selectedEmp })}><Printer className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditing({ mode: "edit", emp: selectedEmp, payment: p })}><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removePayment(p)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            ))}
+            {(detail.data ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">Sin recibos aún.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AdminPayrollDialog
+        open={!!editing}
+        emp={editing?.emp}
+        payment={editing?.mode === "edit" ? editing.payment : null}
+        onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); refresh(); }}
+      />
+
+      <ReceiptDialog
+        open={!!receipt}
+        payment={receipt?.payment}
+        emp={receipt?.emp}
+        onClose={() => setReceipt(null)}
+      />
+    </div>
+  );
+}
+
+function AdminPayrollDialog({
+  open, emp, payment, onClose, onSaved,
+}: { open: boolean; emp: any; payment: any | null; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth();
+  const today = new Date().toISOString().slice(0, 10);
+  const [periodStart, setPeriodStart] = useState(today);
+  const [periodEnd, setPeriodEnd] = useState(today);
+  const [paidAt, setPaidAt] = useState(today);
+  const [daysWorked, setDaysWorked] = useState("");
+  const [dailyRate, setDailyRate] = useState(0);
+  const [bonus, setBonus] = useState("");
+  const [severance, setSeverance] = useState("");
+  const [method, setMethod] = useState("cash");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (payment) {
+      setPeriodStart(payment.period_start ?? today);
+      setPeriodEnd(payment.period_end ?? today);
+      setPaidAt(payment.paid_at ?? today);
+      setDaysWorked(String(payment.days_worked ?? ""));
+      setDailyRate(Number(payment.daily_rate ?? emp?.salary ?? 0));
+      setBonus(String(payment.bonus_amount ?? ""));
+      setSeverance(String(payment.severance_amount ?? ""));
+      setMethod(payment.payment_method ?? "cash");
+      setNote(payment.note ?? "");
+    } else {
+      setPeriodStart(today); setPeriodEnd(today); setPaidAt(today);
+      setDaysWorked(""); setDailyRate(Number(emp?.salary ?? 0));
+      setBonus(""); setSeverance(""); setMethod("cash"); setNote("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, payment, emp?.id]);
+
+  const gross = dailyRate * (Number(daysWorked) || 0);
+  const bonusN = Number(bonus) || 0;
+  const severanceN = Number(severance) || 0;
+  const net = Math.max(0, gross + bonusN + severanceN);
+
+  const save = async () => {
+    if (!emp?.id) { toast.error("Empleada requerida"); return; }
+    if (net <= 0) { toast.error("Captura días, bono o finiquito"); return; }
+    setSaving(true);
+    const payload: any = {
+      employee_id: emp.id,
+      period_start: periodStart,
+      period_end: periodEnd,
+      paid_at: paidAt,
+      days_worked: Number(daysWorked) || 0,
+      daily_rate: dailyRate,
+      gross_amount: gross,
+      bonus_amount: bonusN,
+      severance_amount: severanceN,
+      amount: net,
+      currency: "MXN",
+      payment_method: method,
+      note: note || null,
+    };
+    if (!payment) {
+      payload.created_by = user?.id;
+      payload.receipt_number = `NOM-${new Date(paidAt).getFullYear()}-${Date.now().toString().slice(-6)}`;
+    }
+    const { error } = payment
+      ? await supabase.from("payroll_payments").update(payload).eq("id", payment.id)
+      : await supabase.from("payroll_payments").insert(payload);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(payment ? "Recibo actualizado" : "Recibo registrado");
+    onSaved();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{payment ? "Editar recibo" : "Nuevo recibo"} · {emp?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Periodo inicio</Label><Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} /></div>
+            <div><Label>Periodo fin</Label><Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Fecha de pago</Label><Input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></div>
+            <div><Label>Método</Label>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Efectivo</SelectItem>
+                  <SelectItem value="transfer">Transferencia</SelectItem>
+                  <SelectItem value="debit_card">Débito</SelectItem>
+                  <SelectItem value="credit_card">Crédito</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Card className="p-3 bg-muted/40 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium"><Calculator className="h-4 w-4" /> Cálculo</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Días trabajados</Label><Input type="number" step="0.5" value={daysWorked} onChange={(e) => setDaysWorked(e.target.value)} /></div>
+              <div><Label>Sueldo por día</Label><Input type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} className="font-numeric" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Bono</Label><Input type="number" step="0.01" placeholder="0" value={bonus} onChange={(e) => setBonus(e.target.value)} className="font-numeric" /></div>
+              <div><Label>Finiquito</Label><Input type="number" step="0.01" placeholder="0" value={severance} onChange={(e) => setSeverance(e.target.value)} className="font-numeric" /></div>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Total del recibo</span>
+              <span className="font-bold text-primary font-numeric">{formatMoney(net)}</span>
+            </div>
+          </Card>
+          <div><Label>Nota</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Guardando..." : payment ? "Guardar cambios" : "Registrar"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ============================================================
+   Diálogo vendedora (existente)
+   ============================================================ */
 function PayrollSelfDialog({
   open,
   emp,
@@ -269,7 +597,7 @@ function receiptHtml(payment: any, emp: any) {
     h1{font-size:24px;margin:0;text-transform:uppercase}.big{font-size:44px;font-weight:800}.note{border-top:1px solid #111;padding:12px}.muted{color:#555;font-size:12px}
     @media print{button{display:none} body{margin:0}.box{margin:0;max-width:none}}
   </style></head><body><button onclick="window.print()">Guardar / imprimir PDF</button><div class="box">
-    <div class="grid top"><div class="cell"><h1>${emp.name}</h1></div><div class="cell"><div class="value">${formatDateShort(payment.paid_at)}</div></div></div>
+    <div class="grid top"><div class="cell"><h1>${emp?.name ?? ""}</h1></div><div class="cell"><div class="value">${formatDateShort(payment.paid_at)}</div></div></div>
     <div class="grid mid">
       <div class="cell"><div class="label">Sueldo</div><div class="value">${formatMoney(salaryBase)}</div></div>
       <div class="cell"><div class="label">Por dia</div><div class="value">${formatMoney(Number(payment.daily_rate) || 0)}</div></div>
@@ -302,7 +630,7 @@ function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment
         <DialogHeader><DialogTitle>Recibo de nómina</DialogTitle></DialogHeader>
         <div className="border rounded-lg overflow-hidden bg-white text-black">
           <div className="grid grid-cols-[2fr_1fr] border-b">
-            <div className="p-4 text-center font-mono text-xl font-semibold uppercase">{emp.name}</div>
+            <div className="p-4 text-center font-mono text-xl font-semibold uppercase">{emp?.name}</div>
             <div className="p-4 text-center border-l font-semibold">{formatDateShort(payment.paid_at)}</div>
           </div>
           <div className="grid grid-cols-[1fr_1fr_1fr_2fr] border-b text-center">
