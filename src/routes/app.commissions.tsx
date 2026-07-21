@@ -170,11 +170,57 @@ function CommissionsPage() {
   const cutoffRows = rows.filter((c) => !c.paid_at && new Date(c.created_at) >= cutoff.start && new Date(c.created_at) <= cutoff.end);
   const pendingRows = rows.filter((c) => !c.paid_at);
   const paidRows = rows.filter((c) => c.paid_at);
-  const visibleRows = mode === "cutoff" ? cutoffRows : mode === "pending" ? pendingRows : paidRows;
+  const visibleRows = mode === "cutoff" ? cutoffRows : mode === "pending" ? pendingRows : mode === "paid" ? paidRows : [];
   const totalCutoff = cutoffRows.reduce((s, c) => s + Number(c.commission_amount), 0);
   const totalPending = pendingRows.reduce((s, c) => s + Number(c.commission_amount), 0);
-  const totalPaid = paidRows.reduce((s, c) => s + Number(c.commission_amount), 0);
   const sellerName = profile?.name || "Vendedora";
+
+  // Group by seller (admin only view)
+  const bySeller = useMemo(() => {
+    const map = new Map<string, { sellerId: string; name: string; cutoffTotal: number; pendingTotal: number; cutoffRows: CommissionRow[]; pendingRows: CommissionRow[] }>();
+    rows.forEach((c) => {
+      const key = c.seller_id;
+      const entry = map.get(key) ?? { sellerId: key, name: c.profile?.name || "—", cutoffTotal: 0, pendingTotal: 0, cutoffRows: [], pendingRows: [] };
+      if (!c.paid_at) {
+        entry.pendingTotal += Number(c.commission_amount);
+        entry.pendingRows.push(c);
+        if (new Date(c.created_at) >= cutoff.start && new Date(c.created_at) <= cutoff.end) {
+          entry.cutoffTotal += Number(c.commission_amount);
+          entry.cutoffRows.push(c);
+        }
+      }
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.cutoffTotal - a.cutoffTotal);
+  }, [rows, cutoff.start, cutoff.end]);
+
+  const markCutoffPaid = async (sellerId: string, sellerName: string, rowsToPay: CommissionRow[]) => {
+    if (rowsToPay.length === 0) return;
+    if (!confirm(`Marcar como pagado el corte de ${sellerName} (${formatMoney(rowsToPay.reduce((s, c) => s + Number(c.commission_amount), 0))})?`)) return;
+    setPaying(sellerId);
+    const ids = rowsToPay.map((c) => c.id);
+    const total = rowsToPay.reduce((s, c) => s + Number(c.commission_amount), 0);
+    const nowIso = new Date().toISOString();
+    const { error: upErr } = await supabase
+      .from("commissions")
+      .update({ paid_at: nowIso, payment_method: "cash" })
+      .in("id", ids);
+    if (upErr) { setPaying(null); toast.error(upErr.message); return; }
+    await supabase.from("commission_payments").insert({
+      seller_id: sellerId,
+      amount: total,
+      currency: "MXN",
+      payment_method: "cash",
+      paid_at: nowIso,
+      period_start: cutoff.start.toISOString().slice(0, 10),
+      period_end: cutoff.end.toISOString().slice(0, 10),
+      note: `Corte ${cutoff.label}`,
+    });
+    setPaying(null);
+    toast.success("Corte marcado como pagado");
+    qc.invalidateQueries({ queryKey: ["commissions"] });
+  };
+
 
   return (
     <div className="p-4 md:p-6 space-y-4">
