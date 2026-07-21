@@ -227,7 +227,7 @@ function CommissionsPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Comisiones</h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? "Todas las comisiones" : "Mis comisiones y cortes de pago"}
+            {isAdmin ? "Comisiones de todas las vendedoras" : "Mis comisiones y cortes de pago"}
           </p>
         </div>
         {!isAdmin && (
