@@ -122,8 +122,11 @@ function printableReceipt(rows: CommissionRow[], sellerName: string, label: stri
 
 function CommissionsPage() {
   const { profile, isAdmin } = useAuth();
-  const [mode, setMode] = useState<ViewMode>("cutoff");
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<ViewMode>(isAdmin ? "by-seller" : "cutoff");
   const [receiptRows, setReceiptRows] = useState<CommissionRow[]>([]);
+  const [receiptSellerName, setReceiptSellerName] = useState<string>("");
+  const [paying, setPaying] = useState<string | null>(null);
   const cutoff = useMemo(() => commissionCutoff(), []);
 
   const q = useQuery({
