@@ -29,7 +29,7 @@ type CommissionRow = {
   order: { id: string; total: number; currency: string; created_at: string } | null;
 };
 
-type ViewMode = "cutoff" | "pending" | "paid";
+type ViewMode = "cutoff" | "pending" | "paid" | "by-seller";
 
 function startOfDayISO() {
   const d = new Date();
