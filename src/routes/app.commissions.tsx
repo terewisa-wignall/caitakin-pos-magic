@@ -208,12 +208,11 @@ function CommissionsPage() {
     if (upErr) { setPaying(null); toast.error(upErr.message); return; }
     await supabase.from("commission_payments").insert({
       seller_id: sellerId,
-      amount: total,
+      total_amount: total,
       currency: "MXN",
       payment_method: "cash",
       paid_at: nowIso,
-      period_start: cutoff.start.toISOString().slice(0, 10),
-      period_end: cutoff.end.toISOString().slice(0, 10),
+      cutoff_label: cutoff.label,
       note: `Corte ${cutoff.label}`,
     });
     setPaying(null);
