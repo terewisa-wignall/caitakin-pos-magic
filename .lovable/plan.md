@@ -1,32 +1,62 @@
-## Objetivo
-La administradora no tiene nómina ni comisiones propias: esas dos secciones son donde revisa y gestiona los pagos del equipo. Hoy `/app/payroll` sólo muestra "Mi nómina" (y para admin dice "no vinculada"), y `/app/commissions` ya lista todas las filas para admin pero no le permite marcar pagos ni agrupar por vendedora.
+# Nómina mejorada: finiquitos, vacaciones, aguinaldo y deducciones
 
-## Cambios
+Objetivo: que cada vendedora pueda generar su propia nómina o finiquito con cualquier periodo (7, 10, 15, 30 días o días sueltos), que el sistema haga todas las cuentas y muestre el total a pagar, y que ella **no vea historial** — solo el recibo del día y el saldo de su préstamo.
 
-### 1. `/app/payroll` — vista dual por rol
-- **Vendedora**: vista actual sin cambios (su recibo, generar el suyo).
-- **Admin**: nueva `AdminPayrollView` con:
-  - Lista de empleadas activas (`employees`) con total pagado del mes y del año.
-  - Al seleccionar una empleada, historial completo de `payroll_payments` con badge de quién lo generó.
-  - Botón **Generar recibo** por empleada, reutilizando la lógica actual de `PayrollDialog` de `app.finance.tsx` extraída a un componente compartido `src/components/payroll-form-dialog.tsx` (sin cambiar el comportamiento en Finanzas).
-  - **Editar** y **Borrar** en cada recibo (admin puede modificar los generados por vendedoras). Editar abre el diálogo precargado; borrar pide confirmación.
-  - Filtros por mes y por estado (`pendiente` vs pagado).
-- Cambiar la etiqueta del menú lateral de "Mi nómina" a **"Nómina"**.
+## 1. Calculadora de nómina (nuevo asistente)
 
-### 2. `/app/commissions` — capacidades de admin
-- Encabezado adaptativo ("Comisiones de todas las vendedoras" para admin).
-- Nueva sub-pestaña **Por vendedora** (solo admin): agrupa el corte actual y los pendientes por vendedora, con total y:
-  - **Marcar corte como pagado**: pone `paid_at = now()` y `payment_method` en todas sus comisiones pendientes del corte e inserta un registro en `commission_payments` (tabla ya existente) con el total y periodo.
-  - **Generar recibo** por vendedora (usa el `printableReceipt` actual con el nombre correcto).
-- Ocultar el botón "Generar recibo" propio cuando es admin.
+Un solo formulario guiado, mismo para vendedora y administrador:
 
-### 3. Esquema y permisos
-Sin migraciones nuevas de tablas. Antes de implementar se verifica que las políticas RLS de `payroll_payments` permitan a admin `UPDATE`/`DELETE` de recibos ajenos; si no, se agrega una migración mínima con dos políticas usando `public.is_admin(auth.uid())`. Idem para `commissions.paid_at` (admin ya debería poder actualizar).
+**Datos del periodo**
+- Fecha inicio y fecha fin libres (el sistema cuenta los días naturales del rango).
+- Botones rápidos opcionales: 7 / 10 / 15 / 30 días, que solo llenan la fecha fin.
+- **Días trabajados**: ella marca los días que trabajó dentro del rango (útil para cubre-turnos que va 2 días por semana o cubre enfermedades). El total de días marcados es lo que se paga.
+- Pago por día: se precarga del salario del empleado y es editable.
 
-## Archivos
-- `src/routes/app.payroll.tsx` — rama admin.
-- `src/components/payroll-form-dialog.tsx` — nuevo, compartido.
-- `src/routes/app.finance.tsx` — reemplazar `PayrollDialog` local por el compartido.
-- `src/routes/app.commissions.tsx` — sub-pestaña "Por vendedora" con acciones.
-- `src/components/app-shell.tsx` — renombrar a "Nómina".
-- Migración condicional sólo si RLS actual no cubre a admin.
+**Percepciones calculadas automáticamente (todas editables antes de guardar)**
+- Sueldo = pago por día × días trabajados.
+- Vacaciones: días según antigüedad (12, 14, 16, 18, 20, 22...) conforme a la reforma 2023, proporcionales si el periodo es parcial.
+- Prima vacacional = 25% del importe de vacaciones.
+- Aguinaldo = 15 días al año, proporcional a los días trabajados en el año.
+- Bono / otras percepciones (manual).
+- Indemnización / finiquito extra (manual).
+
+**Deducciones**
+- IMSS (monto o porcentaje).
+- Infonavit: se toma del contrato del empleado (monto fijo o porcentaje) y se puede ajustar.
+- Préstamo: muestra el saldo actual y propone el abono; se puede cambiar y nunca excede el saldo.
+- Otras deducciones (manual, con concepto).
+
+**Resultado**
+- Resumen en vivo: total percepciones − total deducciones = **Total a pagar**.
+- Al guardar: recibo imprimible con nombre completo, NSS, CURP, RFC, puesto, fecha de ingreso, periodo, desglose completo y total.
+
+## 2. Modo finiquito
+
+Un interruptor "Es finiquito / baja" dentro del mismo asistente:
+- Pide fecha de baja y motivo.
+- Calcula automáticamente: días pendientes del periodo, vacaciones no gozadas, prima vacacional, aguinaldo proporcional, y descuenta el saldo del préstamo completo.
+- Marca al empleado como inactivo y cierra el préstamo al guardar (solo si el administrador lo confirma).
+
+## 3. Datos del empleado para finiquito
+
+En el perfil del empleado, un bloque "Datos para nómina y finiquito" con: nombre completo, NSS, CURP, RFC, fecha de ingreso, puesto, salario diario, tipo de contrato y esquema de Infonavit. La vendedora puede completar y corregir sus propios datos; los ve solo de ella misma.
+
+## 4. Permisos (importante)
+
+Vendedora:
+- Entra cuando quiera a generar nómina, finiquito, préstamos y deducciones de ella misma.
+- Ve el recibo que acaba de generar en el día en curso, más el saldo pendiente de su préstamo.
+- **No** ve recibos de días anteriores, ni pagos pasados del préstamo, ni nada de otras compañeras.
+
+Administrador:
+- Ve y edita todo el historial de todas, incluidos los recibos que hicieron las vendedoras.
+- Puede reabrir, corregir o borrar un recibo.
+
+## 5. Detalles técnicos
+
+- Migración: nuevas columnas en `payroll_payments` — `vacation_days`, `vacation_amount`, `vacation_premium`, `christmas_bonus` (aguinaldo), `other_deductions`, `other_deductions_note`, `worked_dates jsonb`, `is_settlement bool`, `termination_reason`, `period_days`. Trigger existente de préstamo se conserva.
+- RLS `payroll_payments`: política de lectura para vendedora limitada a `employee_id` propio **y** `created_at::date = current_date`; admin sin restricción. Insert/update propios permitidos a la vendedora solo el mismo día; admin siempre.
+- Nueva función de cálculo en `src/lib/payroll-calc.ts` (pura, testeable): vacaciones por antigüedad proporcional, prima 25%, aguinaldo 15 días proporcional, totales y redondeos a 2 decimales.
+- Refactor de `src/routes/app.payroll.tsx`: el diálogo actual se reemplaza por el asistente en pasos, reutilizado por la vista admin y la vista vendedora; recibo imprimible ampliado con datos fiscales.
+- Lectura del saldo de préstamo vía `employee_loans` con política que permita a la vendedora ver solo su saldo (no `loan_payments`).
+- Mobile-first: pasos apilados, teclado numérico en importes, resumen fijo abajo con el total a pagar.
