@@ -975,6 +975,7 @@ export type Database = {
         Row: {
           amount: number
           bonus_amount: number
+          christmas_bonus: number
           created_at: string
           created_by: string | null
           currency: string
@@ -985,20 +986,30 @@ export type Database = {
           id: string
           imss_deduction: number
           infonavit_deduction: number
+          is_settlement: boolean
           loan_deduction: number
           loan_id: string | null
           note: string | null
+          other_deductions: number
+          other_deductions_note: string | null
           paid_at: string
           payment_method: string | null
+          period_days: number
           period_end: string
           period_start: string
           receipt_number: string | null
           severance_amount: number
+          termination_reason: string | null
           updated_at: string
+          vacation_amount: number
+          vacation_days: number
+          vacation_premium: number
+          worked_dates: Json
         }
         Insert: {
           amount: number
           bonus_amount?: number
+          christmas_bonus?: number
           created_at?: string
           created_by?: string | null
           currency?: string
@@ -1009,20 +1020,30 @@ export type Database = {
           id?: string
           imss_deduction?: number
           infonavit_deduction?: number
+          is_settlement?: boolean
           loan_deduction?: number
           loan_id?: string | null
           note?: string | null
+          other_deductions?: number
+          other_deductions_note?: string | null
           paid_at?: string
           payment_method?: string | null
+          period_days?: number
           period_end: string
           period_start: string
           receipt_number?: string | null
           severance_amount?: number
+          termination_reason?: string | null
           updated_at?: string
+          vacation_amount?: number
+          vacation_days?: number
+          vacation_premium?: number
+          worked_dates?: Json
         }
         Update: {
           amount?: number
           bonus_amount?: number
+          christmas_bonus?: number
           created_at?: string
           created_by?: string | null
           currency?: string
@@ -1033,16 +1054,25 @@ export type Database = {
           id?: string
           imss_deduction?: number
           infonavit_deduction?: number
+          is_settlement?: boolean
           loan_deduction?: number
           loan_id?: string | null
           note?: string | null
+          other_deductions?: number
+          other_deductions_note?: string | null
           paid_at?: string
           payment_method?: string | null
+          period_days?: number
           period_end?: string
           period_start?: string
           receipt_number?: string | null
           severance_amount?: number
+          termination_reason?: string | null
           updated_at?: string
+          vacation_amount?: number
+          vacation_days?: number
+          vacation_premium?: number
+          worked_dates?: Json
         }
         Relationships: [
           {
