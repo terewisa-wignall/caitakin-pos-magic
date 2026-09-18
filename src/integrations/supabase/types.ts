@@ -1714,6 +1714,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      last_payroll_period_end: {
+        Args: { _employee_id: string }
+        Returns: string
+      }
       vacation_days_by_seniority: { Args: { hire: string }; Returns: number }
     }
     Enums: {
