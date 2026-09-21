@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Download, FileText, IdCard, Plus, Printer, Pencil, Trash2, ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { Download, FileText, IdCard, Plus, Pencil, Share2, Trash2, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { PayrollWizard } from "@/components/payroll-wizard";
+import { downloadReceiptImage, shareReceiptImage, receiptFilename } from "@/lib/receipt-image";
 
 export const Route = createFileRoute("/app/payroll")({
   ssr: false,
@@ -150,7 +151,7 @@ function MyPayrollView() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {p.is_settlement && <Badge className="text-[10px]">Finiquito</Badge>}
-                <Button size="sm" variant="outline" onClick={() => setReceipt(p)}><Printer className="h-3.5 w-3.5 mr-1" /> PDF</Button>
+                <Button size="sm" variant="outline" onClick={() => setReceipt(p)}><Share2 className="h-3.5 w-3.5 mr-1" /> Recibo</Button>
               </div>
             </div>
           ))}
@@ -428,7 +429,7 @@ function AdminPayrollView() {
                   {p.receipt_number && <p className="text-[11px] text-muted-foreground">{p.receipt_number}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReceipt({ payment: p, emp: selectedEmp })}><Printer className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReceipt({ payment: p, emp: selectedEmp })}><Share2 className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditing({ mode: "edit", emp: selectedEmp, payment: p })}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removePayment(p)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
@@ -483,53 +484,47 @@ function receiptRows(payment: any) {
   return { earnings, deductions, totalEarnings, totalDeductions };
 }
 
-function receiptHtml(payment: any, emp: any) {
-  const { earnings, deductions, totalEarnings, totalDeductions } = receiptRows(payment);
-  const list = (rows: [string, number][]) =>
-    rows.filter(([, v]) => v > 0).map(([k, v]) => `<tr><td>${k}</td><td class="r">${formatMoney(v)}</td></tr>`).join("") ||
-    `<tr><td colspan="2" class="muted">Sin conceptos</td></tr>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${payment.receipt_number || "Recibo de nomina"}</title><style>
-    body{font-family:Arial,sans-serif;margin:24px;color:#111}.box{border:2px solid #111;max-width:780px;margin:auto;padding:0}
-    header{padding:16px;border-bottom:2px solid #111}h1{font-size:20px;margin:0 0 4px;text-transform:uppercase}
-    .muted{color:#555;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
-    table{width:100%;border-collapse:collapse;font-size:14px}td{padding:7px 12px;border-bottom:1px solid #ddd}
-    .r{text-align:right;font-variant-numeric:tabular-nums}.col{border-right:2px solid #111}
-    .cap{padding:8px 12px;background:#f3f3f3;font-weight:700;font-size:12px;text-transform:uppercase;border-bottom:1px solid #111}
-    .tot{display:flex;justify-content:space-between;align-items:center;padding:16px;border-top:2px solid #111}
-    .big{font-size:36px;font-weight:800}
-    @media print{button{display:none}body{margin:0}.box{margin:0;max-width:none;border:0}}
-  </style></head><body><button onclick="window.print()">Guardar / imprimir PDF</button><div class="box">
-    <header>
-      <h1>${emp?.name ?? ""}</h1>
-      <div class="muted">${emp?.position ?? ""} ${emp?.hire_date ? "· Ingreso " + formatDateShort(emp.hire_date) : ""}</div>
-      <div class="muted">NSS ${emp?.nss || "—"} · CURP ${emp?.curp || "—"} · RFC ${emp?.rfc || "—"}</div>
-      <div class="muted">Periodo ${formatDateShort(payment.period_start)} – ${formatDateShort(payment.period_end)} · ${Number(payment.days_worked) || 0} dias trabajados · Pago ${formatDateShort(payment.paid_at)}</div>
-      <div class="muted">${payment.is_settlement ? "FINIQUITO" : "Recibo de nomina"} ${payment.receipt_number || ""} ${payment.termination_reason ? "· " + payment.termination_reason : ""}</div>
-    </header>
-    <div class="grid">
-      <div class="col"><div class="cap">Percepciones ${formatMoney(totalEarnings)}</div><table>${list(earnings)}</table></div>
-      <div><div class="cap">Deducciones ${formatMoney(totalDeductions)}</div><table>${list(deductions)}</table></div>
-    </div>
-    <div class="tot"><div><div class="muted">TOTAL A PAGAR</div><div class="big">${formatMoney(Number(payment.amount) || 0)}</div></div>
-      <div class="muted">${payment.note ? "Nota: " + payment.note : ""}</div></div>
-  </div><script>setTimeout(()=>window.print(),300)</script></body></html>`;
-}
 
 function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment: any; emp: any; onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState<"png" | "share" | null>(null);
   if (!payment) return null;
   const { earnings, deductions, totalEarnings, totalDeductions } = receiptRows(payment);
-  const downloadPdf = () => {
-    const w = window.open("", "_blank");
-    if (!w) { toast.error("Permite ventanas emergentes para generar el PDF"); return; }
-    w.document.write(receiptHtml(payment, emp));
-    w.document.close();
+
+  const filename = () => receiptFilename(emp?.name ?? "nomina", payment.period_start, payment.period_end);
+  const shareText = `Recibo de nómina de ${emp?.name ?? ""} · ${formatDateShort(payment.period_start)} – ${formatDateShort(payment.period_end)} · Total a pagar ${formatMoney(Number(payment.amount) || 0)}`;
+
+  const handleDownload = async () => {
+    if (!cardRef.current) return;
+    setBusy("png");
+    try {
+      await downloadReceiptImage(cardRef.current, filename());
+      toast.success("Imagen del recibo descargada");
+    } catch {
+      toast.error("No se pudo generar la imagen");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!cardRef.current) return;
+    setBusy("share");
+    try {
+      const r = await shareReceiptImage(cardRef.current, filename(), shareText);
+      if (r === "fallback") toast.success("Imagen descargada: adjúntala en WhatsApp");
+    } catch {
+      toast.error("No se pudo compartir el recibo");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{payment.is_settlement ? "Finiquito" : "Recibo de nómina"}</DialogTitle></DialogHeader>
-        <div className="border rounded-lg overflow-hidden">
+        <div ref={cardRef} className="border rounded-lg overflow-hidden bg-background">
           <div className="p-3 border-b">
             <p className="font-semibold uppercase">{emp?.name}</p>
             <p className="text-xs text-muted-foreground">{emp?.position || "—"} · NSS {emp?.nss || "—"} · CURP {emp?.curp || "—"} · RFC {emp?.rfc || "—"}</p>
@@ -564,9 +559,14 @@ function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment
             <p className="text-xs text-muted-foreground text-right">{payment.receipt_number}<br />{payment.note}</p>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
-          <Button onClick={downloadPdf}><Download className="h-4 w-4 mr-1" /> Descargar PDF</Button>
+          <Button variant="outline" onClick={handleDownload} disabled={busy !== null}>
+            <Download className="h-4 w-4 mr-1" /> {busy === "png" ? "Generando..." : "Descargar imagen"}
+          </Button>
+          <Button onClick={handleShare} disabled={busy !== null}>
+            <Share2 className="h-4 w-4 mr-1" /> {busy === "share" ? "Preparando..." : "Enviar por WhatsApp"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
