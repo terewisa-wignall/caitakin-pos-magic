@@ -429,7 +429,7 @@ function AdminPayrollView() {
                   {p.receipt_number && <p className="text-[11px] text-muted-foreground">{p.receipt_number}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReceipt({ payment: p, emp: selectedEmp })}><Printer className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReceipt({ payment: p, emp: selectedEmp })}><Share2 className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditing({ mode: "edit", emp: selectedEmp, payment: p })}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removePayment(p)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
