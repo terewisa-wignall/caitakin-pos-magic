@@ -484,37 +484,6 @@ function receiptRows(payment: any) {
   return { earnings, deductions, totalEarnings, totalDeductions };
 }
 
-function receiptHtml(payment: any, emp: any) {
-  const { earnings, deductions, totalEarnings, totalDeductions } = receiptRows(payment);
-  const list = (rows: [string, number][]) =>
-    rows.filter(([, v]) => v > 0).map(([k, v]) => `<tr><td>${k}</td><td class="r">${formatMoney(v)}</td></tr>`).join("") ||
-    `<tr><td colspan="2" class="muted">Sin conceptos</td></tr>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${payment.receipt_number || "Recibo de nomina"}</title><style>
-    body{font-family:Arial,sans-serif;margin:24px;color:#111}.box{border:2px solid #111;max-width:780px;margin:auto;padding:0}
-    header{padding:16px;border-bottom:2px solid #111}h1{font-size:20px;margin:0 0 4px;text-transform:uppercase}
-    .muted{color:#555;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
-    table{width:100%;border-collapse:collapse;font-size:14px}td{padding:7px 12px;border-bottom:1px solid #ddd}
-    .r{text-align:right;font-variant-numeric:tabular-nums}.col{border-right:2px solid #111}
-    .cap{padding:8px 12px;background:#f3f3f3;font-weight:700;font-size:12px;text-transform:uppercase;border-bottom:1px solid #111}
-    .tot{display:flex;justify-content:space-between;align-items:center;padding:16px;border-top:2px solid #111}
-    .big{font-size:36px;font-weight:800}
-    @media print{button{display:none}body{margin:0}.box{margin:0;max-width:none;border:0}}
-  </style></head><body><button onclick="window.print()">Guardar / imprimir PDF</button><div class="box">
-    <header>
-      <h1>${emp?.name ?? ""}</h1>
-      <div class="muted">${emp?.position ?? ""} ${emp?.hire_date ? "· Ingreso " + formatDateShort(emp.hire_date) : ""}</div>
-      <div class="muted">NSS ${emp?.nss || "—"} · CURP ${emp?.curp || "—"} · RFC ${emp?.rfc || "—"}</div>
-      <div class="muted">Periodo ${formatDateShort(payment.period_start)} – ${formatDateShort(payment.period_end)} · ${Number(payment.days_worked) || 0} dias trabajados · Pago ${formatDateShort(payment.paid_at)}</div>
-      <div class="muted">${payment.is_settlement ? "FINIQUITO" : "Recibo de nomina"} ${payment.receipt_number || ""} ${payment.termination_reason ? "· " + payment.termination_reason : ""}</div>
-    </header>
-    <div class="grid">
-      <div class="col"><div class="cap">Percepciones ${formatMoney(totalEarnings)}</div><table>${list(earnings)}</table></div>
-      <div><div class="cap">Deducciones ${formatMoney(totalDeductions)}</div><table>${list(deductions)}</table></div>
-    </div>
-    <div class="tot"><div><div class="muted">TOTAL A PAGAR</div><div class="big">${formatMoney(Number(payment.amount) || 0)}</div></div>
-      <div class="muted">${payment.note ? "Nota: " + payment.note : ""}</div></div>
-  </div><script>setTimeout(()=>window.print(),300)</script></body></html>`;
-}
 
 function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment: any; emp: any; onClose: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
