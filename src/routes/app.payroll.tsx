@@ -13,6 +13,7 @@ import { Download, FileText, IdCard, Plus, Printer, Pencil, Trash2, ChevronLeft,
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { PayrollWizard } from "@/components/payroll-wizard";
+import { downloadReceiptImage, shareReceiptImage, receiptFilename } from "@/lib/receipt-image";
 
 export const Route = createFileRoute("/app/payroll")({
   ssr: false,
