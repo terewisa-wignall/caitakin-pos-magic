@@ -516,20 +516,45 @@ function receiptHtml(payment: any, emp: any) {
 }
 
 function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment: any; emp: any; onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState<"png" | "share" | null>(null);
   if (!payment) return null;
   const { earnings, deductions, totalEarnings, totalDeductions } = receiptRows(payment);
-  const downloadPdf = () => {
-    const w = window.open("", "_blank");
-    if (!w) { toast.error("Permite ventanas emergentes para generar el PDF"); return; }
-    w.document.write(receiptHtml(payment, emp));
-    w.document.close();
+
+  const filename = () => receiptFilename(emp?.name ?? "nomina", payment.period_start, payment.period_end);
+  const shareText = `Recibo de nómina de ${emp?.name ?? ""} · ${formatDateShort(payment.period_start)} – ${formatDateShort(payment.period_end)} · Total a pagar ${formatMoney(Number(payment.amount) || 0)}`;
+
+  const handleDownload = async () => {
+    if (!cardRef.current) return;
+    setBusy("png");
+    try {
+      await downloadReceiptImage(cardRef.current, filename());
+      toast.success("Imagen del recibo descargada");
+    } catch {
+      toast.error("No se pudo generar la imagen");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!cardRef.current) return;
+    setBusy("share");
+    try {
+      const r = await shareReceiptImage(cardRef.current, filename(), shareText);
+      if (r === "fallback") toast.success("Imagen descargada: adjúntala en WhatsApp");
+    } catch {
+      toast.error("No se pudo compartir el recibo");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{payment.is_settlement ? "Finiquito" : "Recibo de nómina"}</DialogTitle></DialogHeader>
-        <div className="border rounded-lg overflow-hidden">
+        <div ref={cardRef} className="border rounded-lg overflow-hidden bg-background">
           <div className="p-3 border-b">
             <p className="font-semibold uppercase">{emp?.name}</p>
             <p className="text-xs text-muted-foreground">{emp?.position || "—"} · NSS {emp?.nss || "—"} · CURP {emp?.curp || "—"} · RFC {emp?.rfc || "—"}</p>
