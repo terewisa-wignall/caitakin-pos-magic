@@ -590,9 +590,14 @@ function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment
             <p className="text-xs text-muted-foreground text-right">{payment.receipt_number}<br />{payment.note}</p>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
-          <Button onClick={downloadPdf}><Download className="h-4 w-4 mr-1" /> Descargar PDF</Button>
+          <Button variant="outline" onClick={handleDownload} disabled={busy !== null}>
+            <Download className="h-4 w-4 mr-1" /> {busy === "png" ? "Generando..." : "Descargar imagen"}
+          </Button>
+          <Button onClick={handleShare} disabled={busy !== null}>
+            <Share2 className="h-4 w-4 mr-1" /> {busy === "share" ? "Preparando..." : "Enviar por WhatsApp"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
