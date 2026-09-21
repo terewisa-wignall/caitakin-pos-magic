@@ -151,7 +151,7 @@ function MyPayrollView() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {p.is_settlement && <Badge className="text-[10px]">Finiquito</Badge>}
-                <Button size="sm" variant="outline" onClick={() => setReceipt(p)}><Printer className="h-3.5 w-3.5 mr-1" /> PDF</Button>
+                <Button size="sm" variant="outline" onClick={() => setReceipt(p)}><Share2 className="h-3.5 w-3.5 mr-1" /> Recibo</Button>
               </div>
             </div>
           ))}
