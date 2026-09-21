@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Download, FileText, IdCard, Plus, Printer, Pencil, Trash2, ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { Download, FileText, IdCard, Plus, Pencil, Share2, Trash2, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { PayrollWizard } from "@/components/payroll-wizard";
