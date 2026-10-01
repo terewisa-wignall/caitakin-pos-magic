@@ -195,6 +195,39 @@ function SellPage() {
   };
   const removeLine = (id: string) => setCart((c) => c.filter((l) => l.variantId !== id));
 
+  // Ofertas: toman piezas reales del inventario y aplican el descuento.
+  const OFFERS = [
+    { id: "sombrero-abanico", label: "Abanico + Sombrero", price: 1000, items: [{ match: "sombrero", qty: 1 }, { match: "abanico", qty: 1 }] },
+    { id: "2-abanicos", label: "2 Abanicos", price: 700, items: [{ match: "abanico", qty: 2 }] },
+  ];
+  const applyOffer = (offer: (typeof OFFERS)[number]) => {
+    const list = products.data ?? [];
+    const picks: { product: Product; variant: Variant; qty: number }[] = [];
+    for (const it of offer.items) {
+      const candidates = list
+        .filter((p) => p.name.toLowerCase().includes(it.match))
+        .flatMap((p) => p.variants.map((v) => ({ product: p, variant: v })))
+        .map((c) => ({ ...c, free: c.variant.stock - (cart.find((l) => l.variantId === c.variant.id)?.quantity ?? 0) }))
+        .filter((c) => c.free >= it.qty)
+        .sort((a, b) => b.free - a.free);
+      if (!candidates[0]) { toast.error(`Sin stock de ${it.match} para la oferta`); return; }
+      picks.push({ ...candidates[0], qty: it.qty });
+    }
+    const normal = picks.reduce((s, p) => s + Number(p.variant.price_override_mxn ?? p.product.base_price_mxn) * p.qty, 0);
+    setCart((c) => {
+      let next = [...c];
+      for (const { product, variant, qty } of picks) {
+        const ex = next.find((l) => l.variantId === variant.id);
+        next = ex
+          ? next.map((l) => (l.variantId === variant.id ? { ...l, quantity: l.quantity + qty } : l))
+          : [...next, { variantId: variant.id, productId: product.id, name: product.name, variantLabel: variant.variant_name, unitPriceMxn: Number(variant.price_override_mxn ?? product.base_price_mxn), quantity: qty, stock: variant.stock }];
+      }
+      return next;
+    });
+    setDiscount((d) => d + Math.max(0, normal - offer.price));
+    toast.success(`Oferta ${offer.label} agregada: ${formatMoney(offer.price)}`);
+  };
+
   const checkout = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("No autenticado");
@@ -305,6 +338,15 @@ function SellPage() {
               {(cats.data ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {OFFERS.map((o) => (
+            <Button key={o.id} type="button" variant="secondary" className="h-auto py-2 flex-col" onClick={() => applyOffer(o)}>
+              <span className="text-xs">Oferta · {o.label}</span>
+              <span className="font-numeric font-bold">{formatMoney(o.price)}</span>
+            </Button>
+          ))}
         </div>
 
         {products.isLoading ? (

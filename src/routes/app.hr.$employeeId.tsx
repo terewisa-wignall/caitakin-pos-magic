@@ -79,7 +79,7 @@ export const Route = createFileRoute("/app/hr/$employeeId")({
     const router = useRouter();
     return (
       <div className="p-6 text-center">
-        <p className="text-sm text-destructive mb-3">{error.message}</p>
+        <p className="text-sm text-destructive mb-3">{error instanceof Error ? error.message : "Error"}</p>
         <Button onClick={() => { reset(); router.invalidate(); }}>Reintentar</Button>
       </div>
     );
