@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { formatMoney } from "@/lib/format";
 import { sortSizes } from "@/lib/sizes";
+import { createThumbFromUrl } from "@/lib/upload-photo";
 
 const QUICK_SIZE_SETS = [
   { id: "unitalla", label: "Unitalla", sizes: ["Unitalla"] },
@@ -65,6 +66,75 @@ function InventoryPage() {
   return <InventoryList />;
 }
 
+// Productos viejos sin miniatura hacen que Vender descargue la foto original (~2.5 MB cada una).
+// Solo visible para el admin y solo mientras falten miniaturas.
+function OptimizePhotosCard({ products }: { products: InventoryProduct[] }) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const [progress, setProgress] = useState<{ done: number; failed: number; total: number } | null>(
+    null,
+  );
+  const missing = products.filter((p) => p.photo_url && !p.photo_thumb_url);
+  if (!isAdmin || (missing.length === 0 && !progress)) return null;
+
+  const run = async () => {
+    const queue = [...missing];
+    let done = 0;
+    let failed = 0;
+    setProgress({ done, failed, total: queue.length });
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) {
+        try {
+          const thumbUrl = await createThumbFromUrl(p.photo_url!);
+          const { error } = await supabase
+            .from("products")
+            .update({ photo_thumb_url: thumbUrl })
+            .eq("id", p.id);
+          if (error) throw error;
+          done++;
+        } catch (e) {
+          failed++;
+          console.warn("Miniatura no creada", p.name, e);
+        }
+        setProgress({ done, failed, total: missing.length });
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    qc.invalidateQueries({ queryKey: ["inventory"] });
+    qc.invalidateQueries({ queryKey: ["sell-products"] });
+    if (failed) toast.error(`${done} fotos optimizadas, ${failed} fallaron. Puedes intentar de nuevo.`);
+    else toast.success(`${done} fotos optimizadas`);
+  };
+
+  const running = progress && progress.done + progress.failed < progress.total;
+  return (
+    <Card className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-amber-200 bg-amber-50">
+      <div className="text-sm text-amber-900">
+        {progress ? (
+          <p>
+            Optimizando fotos: {progress.done + progress.failed} de {progress.total}
+            {progress.failed > 0 && ` (${progress.failed} con error)`}
+          </p>
+        ) : (
+          <p>
+            <span className="font-medium">{missing.length} productos</span> tienen fotos pesadas que
+            hacen lenta la pantalla Vender.
+          </p>
+        )}
+      </div>
+      <Button size="sm" disabled={!!running || (!!progress && missing.length === 0)} onClick={run}>
+        {running
+          ? "Optimizando..."
+          : !progress
+            ? "Optimizar fotos"
+            : missing.length > 0
+              ? "Reintentar"
+              : "Listo ✓"}
+      </Button>
+    </Card>
+  );
+}
+
 function InventoryList() {
   const { isSeller: canManageInventory } = useAuth();
   const [search, setSearch] = useState("");
@@ -101,6 +171,8 @@ function InventoryList() {
           </Button>
         )}
       </header>
+
+      <OptimizePhotosCard products={q.data ?? []} />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

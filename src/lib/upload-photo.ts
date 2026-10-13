@@ -8,6 +8,26 @@ export type UploadedPhoto = {
   photo_thumb_url: string;
 };
 
+// Para productos viejos sin miniatura: descarga la foto original y sube solo la miniatura.
+// La foto grande no se toca.
+export async function createThumbFromUrl(photoUrl: string): Promise<string> {
+  const res = await fetch(photoUrl);
+  if (!res.ok) throw new Error(`No se pudo descargar la foto (${res.status})`);
+  const blob = await res.blob();
+  const { thumb, ext } = await compressForUpload(new File([blob], "foto", { type: blob.type }));
+  const thumbPath = `${crypto.randomUUID()}_thumb.${ext}`;
+  const contentType = ext === "webp" ? "image/webp" : "image/jpeg";
+  const { error } = await supabase.storage
+    .from("product-photos")
+    .upload(thumbPath, thumb, { contentType, upsert: false });
+  if (error) throw error;
+  const { data } = await supabase.storage
+    .from("product-photos")
+    .createSignedUrl(thumbPath, FIVE_YEARS);
+  if (!data?.signedUrl) throw new Error("No se pudo firmar la URL de la miniatura");
+  return data.signedUrl;
+}
+
 // Uploads a product photo to `product-photos` as two WebP files (full + thumb)
 // and returns long-lived signed URLs. Falls back to a single upload on error.
 export async function uploadProductPhoto(file: File): Promise<UploadedPhoto> {

@@ -58,6 +58,20 @@ function drawToBlob(
   });
 }
 
+// Fotos de comprobantes / ID tomadas con la cámara: 1600px JPEG, legible y ~10x más ligera.
+// Si algo falla al comprimir, se sube la foto original.
+export async function compressDocumentPhoto(file: File): Promise<File> {
+  try {
+    const img = await loadImage(file);
+    const blob = await drawToBlob(img, 1600, 0.8, "image/jpeg");
+    if (blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]+$/, "") || "foto";
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 export async function compressForUpload(file: File): Promise<CompressedImages> {
   const img = await loadImage(file);
   const mime = supportsWebp ? "image/webp" : "image/jpeg";

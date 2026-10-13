@@ -4,13 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
-  Camera,
   Search,
   ShoppingCart,
   Trash2,
@@ -18,14 +15,21 @@ import {
   Minus,
   MessageCircle,
   Mail,
-  IdCard,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatMoney, type Currency } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { QRCodeSVG } from "qrcode.react";
 import { sortVariantsBySize } from "@/lib/sizes";
+import { fetchTodayRates } from "@/lib/exchange-rates";
+import { compressDocumentPhoto } from "@/lib/image-compress";
+import {
+  CheckoutDialog,
+  paymentsToleranceMxn,
+  type CheckoutPayload,
+  type PaymentMethod,
+} from "@/components/sell/checkout-dialog";
 
 export const Route = createFileRoute("/app/sell")({
   head: () => ({ meta: [{ title: "Vender · CAsitakin" }] }),
@@ -35,15 +39,9 @@ export const Route = createFileRoute("/app/sell")({
 type Variant = { id: string; variant_name: string; size: string | null; color: string | null; stock: number; price_override_mxn: number | null };
 type Product = { id: string; name: string; photo_url: string | null; photo_thumb_url: string | null; base_price_mxn: number; category_id: string | null; variants: Variant[]; categories: { name: string } | null };
 type CartLine = { variantId: string; productId: string; name: string; variantLabel: string; unitPriceMxn: number; quantity: number; stock: number };
-type PaymentMethod = "cash" | "transfer" | "debit_card" | "credit_card";
-type Payment = { method: PaymentMethod; currency: Currency; amount: number; voucherFile?: File | null };
 
 function isBankPayment(method: PaymentMethod) {
   return method !== "cash";
-}
-
-function needsVoucher(method: PaymentMethod) {
-  return isBankPayment(method);
 }
 
 function getFileExt(file: File) {
@@ -52,11 +50,12 @@ function getFileExt(file: File) {
   return file.type === "image/png" ? "png" : "jpg";
 }
 
-async function uploadSaleDoc(userId: string, orderId: string, kind: "voucher" | "customer-id", file: File) {
+async function uploadSaleDoc(userId: string, orderId: string, kind: "voucher" | "customer-id", original: File) {
+  const file = await compressDocumentPhoto(original);
   const path = `${userId}/${orderId}/${kind}-${crypto.randomUUID()}.${getFileExt(file)}`;
   const { error } = await supabase.storage.from("sale-docs").upload(path, file, { upsert: false });
   if (error) throw error;
-  return path;
+  return { path, name: file.name };
 }
 
 async function ensureOrderCommission(orderId: string, sellerId: string, total: number, orderCurrency: Currency) {
@@ -76,24 +75,21 @@ async function ensureOrderCommission(orderId: string, sellerId: string, total: n
 }
 
 function SellPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [variantPickerFor, setVariantPickerFor] = useState<Product | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState(0);
-  const [currency, setCurrency] = useState<Currency>("MXN");
-  const [payments, setPayments] = useState<Payment[]>([{ method: "cash", currency: "MXN", amount: 0 }]);
   const [customerIdFile, setCustomerIdFile] = useState<File | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [ticket, setTicket] = useState<{ token: string; total: number } | null>(null);
-  // Local datetime for backdating sales. Default = now.
-  const [soldAtLocal, setSoldAtLocal] = useState<string>(() => {
-    const d = new Date(); d.setSeconds(0, 0);
-    const off = d.getTimezoneOffset();
-    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
-  });
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  // Se incrementa tras cada venta para que la ventana de cobro empiece limpia.
+  const [checkoutKey, setCheckoutKey] = useState(0);
+  const [ticket, setTicket] = useState<{ token: string; total: number; currency: Currency } | null>(null);
+  // Vacío = "ahora" al momento de cobrar. Solo se llena para registrar ventas atrasadas.
+  const [soldAtLocal, setSoldAtLocal] = useState("");
 
   const cats = useQuery({
     queryKey: ["categories"],
@@ -140,13 +136,9 @@ function SellPage() {
 
   const rates = useQuery({
     queryKey: ["rates-active"],
-    queryFn: async () => {
-      const { data } = await supabase.from("exchange_rates").select("base_currency,target_currency,rate").eq("is_active", true);
-      const map: Record<string, number> = { MXN: 1 };
-      (data ?? []).forEach((r) => { if (r.target_currency === "MXN") map[r.base_currency] = Number(r.rate); });
-      return map;
-    },
+    queryFn: fetchTodayRates,
   });
+  const todayRates = rates.data ?? { MXN: 1 };
 
   const filtered = useMemo(() => {
     const list = products.data ?? [];
@@ -159,14 +151,7 @@ function SellPage() {
 
   const subtotalMxn = cart.reduce((s, l) => s + l.unitPriceMxn * l.quantity, 0);
   const totalMxn = Math.max(0, subtotalMxn - discount);
-  const totalDisplay = currency === "MXN" ? totalMxn : totalMxn / (rates.data?.[currency] ?? 1);
-  const paymentTotalMxn = payments.reduce((sum, p) => {
-    const amount = Math.max(0, Number(p.amount) || 0);
-    const rate = p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1);
-    return sum + amount * rate;
-  }, 0);
-  const paymentDeltaMxn = paymentTotalMxn - totalMxn;
-  const paymentsMatchTotal = cart.length > 0 && totalMxn > 0 && Math.abs(paymentDeltaMxn) <= 0.01;
+  const itemCount = cart.reduce((s, l) => s + l.quantity, 0);
 
   const addLine = (product: Product, variant: Variant) => {
     if (variant.stock <= 0) { toast.error("Sin stock"); return; }
@@ -194,6 +179,12 @@ function SellPage() {
     }));
   };
   const removeLine = (id: string) => setCart((c) => c.filter((l) => l.variantId !== id));
+
+  const openCheckout = () => {
+    if (cart.length === 0) return;
+    setCartOpen(false);
+    setCheckoutOpen(true);
+  };
 
   // Ofertas: toman piezas reales del inventario y aplican el descuento.
   const OFFERS = [
@@ -229,18 +220,19 @@ function SellPage() {
   };
 
   const checkout = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("No autenticado");
+    mutationFn: async ({ currency, payments }: CheckoutPayload) => {
+      if (!user) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
       if (cart.length === 0) throw new Error("Carrito vacío");
 
       const paymentsClean = payments.filter((p) => p.amount > 0);
       if (paymentsClean.length === 0) throw new Error("Registra al menos un pago");
-      const paidMxn = paymentsClean.reduce((sum, p) => {
-        const rateForPayment = p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1);
-        return sum + Number(p.amount || 0) * rateForPayment;
-      }, 0);
+      const rateOf = (c: Currency) => (c === "MXN" ? 1 : todayRates[c]);
+      for (const p of paymentsClean) {
+        if (!rateOf(p.currency)) throw new Error(`Falta el tipo de cambio de hoy para ${p.currency}`);
+      }
+      const paidMxn = paymentsClean.reduce((sum, p) => sum + Number(p.amount || 0) * rateOf(p.currency)!, 0);
       const paymentDifference = paidMxn - totalMxn;
-      if (Math.abs(paymentDifference) > 0.01) {
+      if (Math.abs(paymentDifference) > paymentsToleranceMxn(paymentsClean, todayRates)) {
         throw new Error(
           paymentDifference < 0
             ? `Falta registrar ${formatMoney(Math.abs(paymentDifference), "MXN")} en pagos`
@@ -248,7 +240,7 @@ function SellPage() {
         );
       }
 
-      const rate = currency === "MXN" ? 1 : (rates.data?.[currency] ?? 1);
+      const rate = rateOf(currency)!;
       const totalInCurrency = currency === "MXN" ? totalMxn : totalMxn / rate;
 
       const soldAtIso = soldAtLocal ? new Date(soldAtLocal).toISOString() : new Date().toISOString();
@@ -276,30 +268,26 @@ function SellPage() {
       const { error: itemsErr } = await supabase.from("order_items").insert(items);
       if (itemsErr) throw itemsErr;
 
-      let customerIdPath: string | null = null;
       if (customerIdFile) {
-        customerIdPath = await uploadSaleDoc(user.id, order.id, "customer-id", customerIdFile);
+        const doc = await uploadSaleDoc(user.id, order.id, "customer-id", customerIdFile);
         const { error: idErr } = await supabase
           .from("orders")
-          .update({ customer_id_file_path: customerIdPath, customer_id_file_name: customerIdFile.name })
+          .update({ customer_id_file_path: doc.path, customer_id_file_name: doc.name })
           .eq("id", order.id);
         if (idErr) throw idErr;
       }
 
       const paymentsToInsert = await Promise.all(paymentsClean.map(async (p) => {
-        let voucherPath: string | null = null;
-        if (p.voucherFile) {
-          voucherPath = await uploadSaleDoc(user.id, order.id, "voucher", p.voucherFile);
-        }
+        const voucher = p.voucherFile ? await uploadSaleDoc(user.id, order.id, "voucher", p.voucherFile) : null;
         return {
           order_id: order.id,
           payment_method: p.method,
           bank: isBankPayment(p.method) ? "HSBC" : null,
           currency: p.currency,
           amount: p.amount,
-          exchange_rate_used: p.currency === "MXN" ? 1 : (rates.data?.[p.currency] ?? 1),
-          voucher_file_path: voucherPath,
-          voucher_file_name: p.voucherFile?.name ?? null,
+          exchange_rate_used: rateOf(p.currency)!,
+          voucher_file_path: voucher?.path ?? null,
+          voucher_file_name: voucher?.name ?? null,
         };
       }));
       const { error: payErr } = await supabase.from("payments").insert(paymentsToInsert);
@@ -309,23 +297,29 @@ function SellPage() {
       const { data: ticket, error: tErr } = await supabase.from("tickets").insert({ order_id: order.id }).select("public_token").single();
       if (tErr || !ticket) throw tErr || new Error("No se pudo crear el ticket");
 
-      return { token: ticket.public_token as string, total: totalInCurrency };
+      return { token: ticket.public_token as string, total: totalInCurrency, currency };
     },
     onSuccess: (data) => {
+      toast.success("Venta registrada");
       setTicket(data);
-      setCart([]); setDiscount(0); setPayments([{ method: "cash", currency: "MXN", amount: 0 }]);
+      setCart([]); setDiscount(0); setSoldAtLocal("");
       setCustomerIdFile(null);
-      setCartOpen(false);
+      setCheckoutOpen(false);
+      setCheckoutKey((k) => k + 1);
       qc.invalidateQueries({ queryKey: ["sell-products"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
     },
-    onError: (e: any) => toast.error(e.message || "Error al cobrar"),
+    onError: (e: Error) =>
+      toast.error("No se pudo registrar la venta. El carrito sigue aquí; intenta de nuevo.", {
+        description: e?.message,
+        duration: 8000,
+      }),
   });
 
   return (
     <div className="flex flex-col lg:flex-row min-h-[calc(100vh-3.5rem)] md:min-h-screen">
       {/* Product picker */}
-      <div className="flex-1 min-w-0 p-3 md:p-6">
+      <div className="flex-1 min-w-0 p-3 pb-24 md:p-6 md:pb-24 lg:pb-6">
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -364,8 +358,7 @@ function SellPage() {
                   <Card className="overflow-hidden hover:shadow-elevated transition-shadow">
                     <div className="aspect-square bg-muted relative">
                       {p.photo_thumb_url || p.photo_url ? (
-                        <img src={p.photo_thumb_url ?? p.photo_url ?? ""} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
-
+                        <img src={p.photo_thumb_url ?? p.photo_url ?? ""} alt={p.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">Sin foto</div>
                       )}
@@ -386,43 +379,48 @@ function SellPage() {
         )}
       </div>
 
-      {/* Cart - desktop */}
-      <aside className="hidden lg:flex lg:w-96 border-l bg-card flex-col">
-        <CartPanel
-          cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
-          discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
-          payments={payments} setPayments={setPayments}
-          paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
-          customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
-          soldAtLocal={soldAtLocal} setSoldAtLocal={setSoldAtLocal}
-          updateQty={updateQty} removeLine={removeLine}
-          checkout={() => checkout.mutate()} loading={checkout.isPending}
-        />
+      {/* Cart - desktop: ocupa toda la altura, el botón Cobrar queda fijo abajo */}
+      <aside className="hidden lg:flex lg:w-96 lg:sticky lg:top-0 lg:h-screen self-start border-l bg-card flex-col">
+        <CartPanel cart={cart} itemCount={itemCount} totalMxn={totalMxn} discount={discount}
+          updateQty={updateQty} removeLine={removeLine} onCharge={openCheckout} />
       </aside>
 
-      {/* Cart - mobile */}
+      {/* Celular / tablet: barra fija con carrito y Cobrar */}
+      <div className="lg:hidden fixed inset-x-0 bottom-[57px] md:bottom-0 z-20 flex gap-2 border-t bg-card/95 backdrop-blur p-2">
+        <Button variant="outline" className="h-12 px-4 gap-2" onClick={() => setCartOpen(true)} aria-label="Ver carrito">
+          <ShoppingCart className="h-5 w-5" />
+          <span className="font-numeric font-semibold">{itemCount}</span>
+        </Button>
+        <Button className="h-12 flex-1 text-base font-bold" disabled={cart.length === 0 || totalMxn <= 0} onClick={openCheckout}>
+          {cart.length === 0 ? "Agrega productos" : `Cobrar ${formatMoney(totalMxn)}`}
+        </Button>
+      </div>
+
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-        <SheetTrigger asChild>
-          <button className="lg:hidden fixed right-4 bottom-20 z-20 bg-primary text-primary-foreground rounded-full px-4 py-3 shadow-elevated flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5" />
-            <span className="font-semibold font-numeric">{cart.length}</span>
-            <span className="text-sm">· {formatMoney(totalDisplay, currency)}</span>
-          </button>
-        </SheetTrigger>
-        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-          <SheetHeader className="p-4 border-b"><SheetTitle>Carrito</SheetTitle></SheetHeader>
-          <CartPanel
-            cart={cart} subtotalMxn={subtotalMxn} totalMxn={totalMxn} totalDisplay={totalDisplay}
-            discount={discount} setDiscount={setDiscount} currency={currency} setCurrency={setCurrency}
-            payments={payments} setPayments={setPayments}
-            paymentTotalMxn={paymentTotalMxn} paymentDeltaMxn={paymentDeltaMxn} paymentsMatchTotal={paymentsMatchTotal}
-            customerIdFile={customerIdFile} setCustomerIdFile={setCustomerIdFile}
-            soldAtLocal={soldAtLocal} setSoldAtLocal={setSoldAtLocal}
-            updateQty={updateQty} removeLine={removeLine}
-            checkout={() => checkout.mutate()} loading={checkout.isPending}
-          />
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
+          <SheetHeader className="sr-only"><SheetTitle>Carrito</SheetTitle></SheetHeader>
+          <CartPanel cart={cart} itemCount={itemCount} totalMxn={totalMxn} discount={discount}
+            updateQty={updateQty} removeLine={removeLine} onCharge={openCheckout} />
         </SheetContent>
       </Sheet>
+
+      <CheckoutDialog
+        key={checkoutKey}
+        open={checkoutOpen}
+        onOpenChange={(o) => { if (!checkout.isPending) setCheckoutOpen(o); }}
+        subtotalMxn={subtotalMxn}
+        totalMxn={totalMxn}
+        discount={discount}
+        setDiscount={setDiscount}
+        soldAtLocal={soldAtLocal}
+        setSoldAtLocal={setSoldAtLocal}
+        customerIdFile={customerIdFile}
+        setCustomerIdFile={setCustomerIdFile}
+        rates={todayRates}
+        isAdmin={isAdmin}
+        loading={checkout.isPending}
+        onConfirm={(payload) => checkout.mutate(payload)}
+      />
 
       {/* Variant picker */}
       <Dialog open={!!variantPickerFor} onOpenChange={(o) => !o && setVariantPickerFor(null)}>
@@ -458,7 +456,7 @@ function SellPage() {
           <DialogHeader><DialogTitle>¡Venta registrada!</DialogTitle></DialogHeader>
           {ticket && (
             <div className="space-y-4 text-center">
-              <p className="text-2xl font-bold font-numeric">{formatMoney(ticket.total, currency)}</p>
+              <p className="text-2xl font-bold font-numeric">{formatMoney(ticket.total, ticket.currency)}</p>
               <div className="flex justify-center"><QRCodeSVG value={`${window.location.origin}/t/${ticket.token}`} size={180} /></div>
               <p className="text-xs text-muted-foreground break-all">{window.location.origin}/t/{ticket.token}</p>
               <div className="grid grid-cols-2 gap-2">
@@ -476,7 +474,7 @@ function SellPage() {
             </div>
           )}
           <DialogFooter>
-            <Button onClick={() => setTicket(null)} className="w-full">Nueva venta</Button>
+            <Button onClick={() => setTicket(null)} className="w-full h-12 text-base">Nueva venta</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -485,277 +483,56 @@ function SellPage() {
 }
 
 function CartPanel({
-  cart, subtotalMxn, totalMxn, totalDisplay, discount, setDiscount, currency, setCurrency,
-  payments, setPayments, paymentTotalMxn, paymentDeltaMxn, paymentsMatchTotal, customerIdFile, setCustomerIdFile,
-  soldAtLocal, setSoldAtLocal, updateQty, removeLine, checkout, loading,
-}: any) {
-  const setPayment = (i: number, p: Partial<Payment>) => setPayments((ps: Payment[]) => ps.map((x, idx) => idx === i ? { ...x, ...p } : x));
-  const showCustomerIdReminder = totalMxn > 1000;
-  const idCameraRef = useRef<HTMLInputElement>(null);
-  const singleMethod = payments[0]?.method as PaymentMethod | undefined;
-  const singleIsCard = singleMethod === "debit_card" || singleMethod === "credit_card";
-  const singleIsTransfer = singleMethod === "transfer";
-  const singleAutoFill = singleIsCard || singleIsTransfer;
-
-  useEffect(() => {
-    if (!singleAutoFill) return;
-    const p = payments[0];
-    if (!p) return;
-    if (p.currency !== "MXN" || Math.abs(Number(p.amount) - totalMxn) > 0.01) {
-      setPayment(0, { currency: "MXN", amount: totalMxn });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [singleAutoFill, totalMxn, payments[0]?.method]);
+  cart, itemCount, totalMxn, discount, updateQty, removeLine, onCharge,
+}: {
+  cart: CartLine[];
+  itemCount: number;
+  totalMxn: number;
+  discount: number;
+  updateQty: (id: string, delta: number) => void;
+  removeLine: (id: string) => void;
+  onCharge: () => void;
+}) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b p-4">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-xs text-muted-foreground">Artículos</p>
-            <p className="text-lg font-bold font-numeric">{cart.length}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground">Total</p>
-            <p className="text-xl font-bold font-numeric text-primary">
-              {formatMoney(totalDisplay, currency)}
-            </p>
-          </div>
-        </div>
+      <div className="border-b px-4 py-3 flex items-center justify-between">
+        <p className="font-semibold">Carrito</p>
+        <p className="text-sm text-muted-foreground font-numeric">
+          {itemCount} {itemCount === 1 ? "artículo" : "artículos"}
+        </p>
       </div>
 
-      <div className="max-h-56 shrink-0 overflow-y-auto p-4 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
         {cart.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-5">Carrito vacío</p>
-        ) : cart.map((l: CartLine) => (
-          <div key={l.variantId} className="flex gap-2 items-start rounded-md border p-2">
+          <p className="text-sm text-muted-foreground text-center py-10">Toca un producto para agregarlo</p>
+        ) : cart.map((l) => (
+          <div key={l.variantId} className="flex gap-2 items-center rounded-md border p-2">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{l.name}</p>
               <p className="text-xs text-muted-foreground truncate">{l.variantLabel}</p>
-              <p className="text-xs font-numeric mt-0.5">{formatMoney(l.unitPriceMxn)}</p>
+              <p className="text-xs font-numeric mt-0.5">
+                {formatMoney(l.unitPriceMxn * l.quantity)}
+                {l.quantity > 1 && <span className="text-muted-foreground"> · {formatMoney(l.unitPriceMxn)} c/u</span>}
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(l.variantId, -1)}><Minus className="h-3 w-3" /></Button>
-              <span className="w-6 text-center font-numeric text-sm">{l.quantity}</span>
-              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(l.variantId, 1)}><Plus className="h-3 w-3" /></Button>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeLine(l.variantId)}><Trash2 className="h-3 w-3" /></Button>
+              <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => updateQty(l.variantId, -1)} aria-label="Quitar uno"><Minus className="h-4 w-4" /></Button>
+              <span className="w-7 text-center font-numeric">{l.quantity}</span>
+              <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => updateQty(l.variantId, 1)} aria-label="Agregar uno"><Plus className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive" onClick={() => removeLine(l.variantId)} aria-label="Eliminar"><Trash2 className="h-4 w-4" /></Button>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto border-t p-4 space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label className="text-xs">Descuento (MXN)</Label>
-            <Input type="number" min={0} value={discount} onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="font-numeric" />
-          </div>
-          <div>
-            <Label className="text-xs">Divisa</Label>
-            <Select value={currency} onValueChange={(v: Currency) => setCurrency(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="MXN">MXN</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="EUR">EUR</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div>
-          <Label className="text-xs">Fecha de la venta</Label>
-          <Input
-            type="datetime-local"
-            value={soldAtLocal}
-            onChange={(e) => setSoldAtLocal(e.target.value)}
-            className="font-numeric"
-          />
-          {(() => {
-            const today = new Date().toISOString().slice(0, 10);
-            const chosen = (soldAtLocal || "").slice(0, 10);
-            if (chosen && chosen !== today) {
-              return <p className="text-[11px] text-amber-700 mt-1">Registrando venta atrasada del {chosen}</p>;
-            }
-            return null;
-          })()}
-        </div>
-
-        <div className="flex justify-between text-sm"><span>Subtotal</span><span className="font-numeric">{formatMoney(subtotalMxn)}</span></div>
-        <div className="flex justify-between text-sm"><span>Descuento</span><span className="font-numeric">−{formatMoney(discount)}</span></div>
-        <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-numeric text-primary">{formatMoney(totalDisplay, currency)}</span></div>
-
-        {showCustomerIdReminder && (
-          <Card className="p-3 bg-amber-50 border-amber-200 text-sm space-y-2">
-            <div className="flex items-start gap-2">
-              <IdCard className="h-4 w-4 mt-0.5 text-amber-700 shrink-0" />
-              <div className="min-w-0">
-                <p className="font-medium text-amber-900">Venta mayor a $1,000</p>
-                <p className="text-xs text-amber-800">Solicita ID del cliente. No es obligatorio para cobrar.</p>
-              </div>
-            </div>
-            <input
-              ref={idCameraRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => setCustomerIdFile(e.target.files?.[0] ?? null)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full border-amber-300 bg-white text-xs text-amber-900"
-              onClick={() => idCameraRef.current?.click()}
-            >
-              <Camera className="h-3.5 w-3.5 mr-1.5" />
-              Tomar foto de ID
-            </Button>
-            {customerIdFile && <p className="truncate text-xs text-amber-800">{customerIdFile.name}</p>}
-          </Card>
+      <div className="border-t bg-card p-3 space-y-1">
+        {discount > 0 && (
+          <p className="text-xs text-muted-foreground text-center font-numeric">Incluye descuento de {formatMoney(discount)}</p>
         )}
-
-        <Tabs defaultValue="single">
-          <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="single">Pago simple</TabsTrigger>
-            <TabsTrigger value="mixed">Pago mixto</TabsTrigger>
-          </TabsList>
-          <TabsContent value="single" className="space-y-2 pt-3">
-            <Select value={payments[0]?.method} onValueChange={(v) => setPayment(0, { method: v as PaymentMethod, voucherFile: needsVoucher(v as PaymentMethod) ? payments[0]?.voucherFile ?? null : null })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Efectivo</SelectItem>
-                <SelectItem value="transfer">Transferencia</SelectItem>
-                <SelectItem value="debit_card">Débito</SelectItem>
-                <SelectItem value="credit_card">Crédito</SelectItem>
-              </SelectContent>
-            </Select>
-            {needsVoucher(payments[0]?.method) && (
-              <VoucherUpload
-                file={payments[0]?.voucherFile ?? null}
-                onChange={(file) => setPayment(0, { voucherFile: file })}
-              />
-            )}
-            {singleAutoFill ? (
-              <div className="rounded-md border bg-muted/40 p-3 text-sm flex items-center justify-between">
-                <span className="text-muted-foreground">Se cobrará (MXN)</span>
-                <span className="font-numeric font-bold text-primary">{formatMoney(totalMxn, "MXN")}</span>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  <Select value={payments[0]?.currency} onValueChange={(v) => setPayment(0, { currency: v as Currency })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input type="number" placeholder="Monto" value={payments[0]?.amount || ""} onChange={(e) => setPayment(0, { amount: Number(e.target.value) || 0 })} className="font-numeric" />
-                </div>
-                <Button size="sm" variant="link" className="px-0" onClick={() => setPayment(0, { amount: totalDisplay, currency })}>Usar total</Button>
-              </>
-            )}
-          </TabsContent>
-          <TabsContent value="mixed" className="space-y-2 pt-3">
-            {payments.map((p: Payment, i: number) => (
-              <div key={i} className="space-y-1 rounded-md border p-2">
-                <div className="grid grid-cols-[1fr_80px_1fr_auto] gap-1 items-center">
-                  <Select value={p.method} onValueChange={(v) => setPayment(i, { method: v as PaymentMethod, voucherFile: needsVoucher(v as PaymentMethod) ? p.voucherFile ?? null : null })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="transfer">Transfer.</SelectItem>
-                      <SelectItem value="debit_card">Débito</SelectItem>
-                      <SelectItem value="credit_card">Crédito</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={p.currency} onValueChange={(v) => setPayment(i, { currency: v as Currency })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="EUR">EUR</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input type="number" value={p.amount || ""} onChange={(e) => setPayment(i, { amount: Number(e.target.value) || 0 })} className="h-9 font-numeric" />
-                  <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => setPayments(payments.filter((_: any, idx: number) => idx !== i))}><Trash2 className="h-3 w-3" /></Button>
-                </div>
-                {needsVoucher(p.method) && (
-                  <VoucherUpload
-                    file={p.voucherFile ?? null}
-                    compact
-                    onChange={(file) => setPayment(i, { voucherFile: file })}
-                  />
-                )}
-              </div>
-            ))}
-            <Button size="sm" variant="outline" onClick={() => setPayments([...payments, { method: "cash", currency: "MXN", amount: 0 }])}>
-              <Plus className="h-3 w-3 mr-1" /> Agregar pago
-            </Button>
-          </TabsContent>
-        </Tabs>
-
-        {cart.length > 0 && (
-          <div className={`rounded-md border p-2 text-sm ${paymentsMatchTotal ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}>
-            <div className="flex justify-between gap-2">
-              <span>Pagado</span>
-              <span className="font-numeric">{formatMoney(paymentTotalMxn, "MXN")}</span>
-            </div>
-            {!paymentsMatchTotal && (
-              <div className="flex justify-between gap-2 text-xs">
-                <span>{paymentDeltaMxn < 0 ? "Falta" : "Excede"}</span>
-                <span className="font-numeric">{formatMoney(Math.abs(paymentDeltaMxn), "MXN")}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <Button className="w-full" size="lg" disabled={loading || cart.length === 0 || totalMxn <= 0 || !paymentsMatchTotal} onClick={checkout}>
-          {loading ? "Cobrando..." : "Cobrar"}
+        <Button className="w-full h-14 text-lg font-bold" disabled={cart.length === 0 || totalMxn <= 0} onClick={onCharge}>
+          {cart.length === 0 ? "Agrega productos" : `Cobrar ${formatMoney(totalMxn)}`}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function VoucherUpload({
-  file,
-  onChange,
-  compact = false,
-}: {
-  file: File | null;
-  onChange: (file: File | null) => void;
-  compact?: boolean;
-}) {
-  const cameraRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className={compact ? "space-y-1" : "rounded-md border bg-muted/30 p-2 space-y-1"}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium">Comprobante HSBC</p>
-          <p className="text-[11px] text-muted-foreground">Pide la foto del voucher de banco.</p>
-        </div>
-        <div className="shrink-0">
-          <input
-            ref={cameraRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={() => cameraRef.current?.click()}
-          >
-            <Camera className="h-3.5 w-3.5 mr-1" />
-            Tomar foto
-          </Button>
-        </div>
-      </div>
-      {file && <p className="truncate text-[11px] text-muted-foreground">{file.name}</p>}
     </div>
   );
 }

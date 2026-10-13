@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Check, Plus, Trash2 } from "lucide-react";
+import { isSameLocalDay, saveRate } from "@/lib/exchange-rates";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Configuración · CAsitakin" }] }),
@@ -21,6 +22,7 @@ type ExchangeRate = {
   target_currency: string;
   rate: number;
   is_active: boolean;
+  created_at: string;
 };
 
 type Category = {
@@ -64,26 +66,15 @@ function SettingsPage() {
   }, [cats.data]);
 
   const updateRate = async (base: string, rate: number) => {
-    if (!rate || rate <= 0) {
-      toast.error("Tasa inválida");
-      return;
-    }
-    await supabase
-      .from("exchange_rates")
-      .update({ is_active: false })
-      .eq("base_currency", base)
-      .eq("target_currency", "MXN");
-    const { error } = await supabase.from("exchange_rates").insert({
-      base_currency: base,
-      target_currency: "MXN",
-      rate,
-      is_active: true,
-    });
-    if (error) toast.error(error.message);
-    else {
+    try {
+      await saveRate(base as "USD" | "EUR", rate);
       toast.success("Tipo de cambio actualizado");
+      if (base === "USD") setUsdRate("");
+      else setEurRate("");
       qc.invalidateQueries({ queryKey: ["rates-all"] });
       qc.invalidateQueries({ queryKey: ["rates-active"] });
+    } catch (e) {
+      toast.error((e as Error).message);
     }
   };
 
@@ -138,8 +129,16 @@ function SettingsPage() {
     );
   }
 
-  const activeUsd = (rates.data ?? []).find((r) => r.base_currency === "USD" && r.is_active)?.rate;
-  const activeEur = (rates.data ?? []).find((r) => r.base_currency === "EUR" && r.is_active)?.rate;
+  const activeUsdRow = (rates.data ?? []).find((r) => r.base_currency === "USD" && r.is_active);
+  const activeEurRow = (rates.data ?? []).find((r) => r.base_currency === "EUR" && r.is_active);
+  const activeUsd = activeUsdRow?.rate;
+  const activeEur = activeEurRow?.rate;
+  const todayBadge = (row?: ExchangeRate) =>
+    row && isSameLocalDay(row.created_at) ? (
+      <span className="ml-2 text-xs font-normal text-green-700">✅ capturado hoy</span>
+    ) : (
+      <span className="ml-2 text-xs font-normal text-amber-700">⚠️ falta capturar hoy</span>
+    );
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-3xl">
@@ -154,7 +153,7 @@ function SettingsPage() {
         <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
-              <Label>USD → MXN (actual: {activeUsd ?? "—"})</Label>
+              <Label>USD → MXN (actual: {activeUsd ?? "—"}){todayBadge(activeUsdRow)}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -168,7 +167,7 @@ function SettingsPage() {
           </div>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
-              <Label>EUR → MXN (actual: {activeEur ?? "—"})</Label>
+              <Label>EUR → MXN (actual: {activeEur ?? "—"}){todayBadge(activeEurRow)}</Label>
               <Input
                 type="number"
                 step="0.01"
