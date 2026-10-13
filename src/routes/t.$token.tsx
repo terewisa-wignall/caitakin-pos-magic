@@ -39,6 +39,7 @@ function PublicTicket() {
             <img src={logo} alt="CAsitakin" width={64} height={64} className="h-16 w-16 mx-auto" />
             <h1 className="text-xl font-bold mt-1">CAsitakin</h1>
             <p className="text-xs text-muted-foreground">Artesanía mexicana</p>
+            <p className="text-xs text-muted-foreground">5ta Av No. 209, Local 4, C.P. 77710</p>
           </div>
           <div className="text-xs text-muted-foreground mb-3 grid grid-cols-2 gap-1">
             <span>Fecha:</span><span className="text-right">{formatDate(order.created_at)}</span>

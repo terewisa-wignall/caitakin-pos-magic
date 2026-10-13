@@ -1739,6 +1739,10 @@ export type Database = {
         Args: { _employee_id: string }
         Returns: string
       }
+      register_loan_payment: {
+        Args: { _loan_id: string; _amount: number; _paid_at: string; _note?: string | null }
+        Returns: number
+      }
       vacation_days_by_seniority: { Args: { hire: string }; Returns: number }
     }
     Enums: {

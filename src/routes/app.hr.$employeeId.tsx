@@ -586,16 +586,10 @@ function LoansTab({ employeeId }: { employeeId: string }) {
     if (!amount || amount <= 0) { toast.error("Monto inválido"); return; }
     const loan = loans.find((l: any) => l.id === loanId);
     if (!loan) return;
-    const applied = Math.min(amount, Number(loan.balance));
-    const { error: e1 } = await supabase.from("loan_payments").insert({
-      loan_id: loanId, amount: applied, paid_at: pay.paid_at, source: "manual", note: pay.note || null,
+    const { error } = await supabase.rpc("register_loan_payment", {
+      _loan_id: loanId, _amount: amount, _paid_at: pay.paid_at, _note: pay.note || null,
     });
-    if (e1) { toast.error(e1.message); return; }
-    const newBalance = Number(loan.balance) - applied;
-    const { error: e2 } = await supabase.from("employee_loans").update({
-      balance: newBalance, status: newBalance <= 0 ? "paid" : "active",
-    }).eq("id", loanId);
-    if (e2) { toast.error(e2.message); return; }
+    if (error) { toast.error(error.message); return; }
     toast.success("Abono registrado");
     setPayOpen(null);
     setPay({ amount: "", paid_at: today, note: "" });
