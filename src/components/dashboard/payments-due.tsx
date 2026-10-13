@@ -27,7 +27,7 @@ type Reminder = {
   employee_id: string | null;
   done_at?: string | null;
 };
-type Debt = {
+export type Debt = {
   id: string;
   amount: number;
   incurred_on: string;
@@ -424,7 +424,7 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-function PayDebtDialog({ debt, balance, onClose }: { debt: Debt; balance: number; onClose: () => void }) {
+export function PayDebtDialog({ debt, balance, onClose }: { debt: Debt; balance: number; onClose: () => void }) {
   const qc = useQueryClient();
   const [amount, setAmount] = useState(String(balance));
   const [date, setDate] = useState(todayIso());

@@ -34,7 +34,7 @@ END;
 $$;
 
 -- Al crear un recibo de nómina (no finiquito), cierra el recordatorio pendiente
--- más antiguo de esa empleada que vence dentro de los próximos 7 días (o ya venció).
+-- más antiguo de esa empleada cuya fecha está cerca de la fecha de pago del recibo.
 CREATE OR REPLACE FUNCTION public.close_payroll_reminder()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -54,7 +54,9 @@ BEGIN
   WHERE employee_id = NEW.employee_id
     AND kind = 'nomina'
     AND done_at IS NULL
-    AND due_date <= (COALESCE(NEW.paid_at, now())::date + 7)
+    -- Pagada desde 3 días antes hasta 7 días después de la fecha del recordatorio.
+    -- Así un recibo atrasado (de una semana anterior) no cierra el de la semana siguiente.
+    AND COALESCE(NEW.paid_at, now())::date BETWEEN due_date - 3 AND due_date + 7
   ORDER BY due_date
   LIMIT 1
   FOR UPDATE;

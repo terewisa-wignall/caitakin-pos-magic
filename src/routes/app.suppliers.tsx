@@ -12,9 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit2, ExternalLink, FileText, Image, LinkIcon, PackagePlus, Plus, Search, Trash2, Truck, Upload } from "lucide-react";
+import { Edit2, ExternalLink, FileText, HandCoins, Image, LinkIcon, PackageCheck, PackagePlus, Plus, Search, Trash2, Truck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { PriceList, type PriceItem } from "@/components/suppliers/price-list";
+import { ReceiveDialog } from "@/components/suppliers/receive-dialog";
+import { PayDebtDialog, type Debt } from "@/components/dashboard/payments-due";
 
 export const Route = createFileRoute("/app/suppliers")({
   head: () => ({ meta: [{ title: "Proveedores · CAsitakin" }] }),
@@ -50,10 +53,13 @@ type SupplierProduct = {
   last_quoted_at: string | null;
   is_available: boolean;
   notes: string | null;
+  dimensions?: string | null;
+  photo_url?: string | null;
+  photo_thumb_url?: string | null;
   categories: { name: string } | null;
   products: { name: string; base_price_mxn: number } | null;
 };
-type InventoryOption = { id: string; name: string; base_price_mxn: number };
+type InventoryOption = { id: string; name: string; base_price_mxn: number; supplier_id?: string | null };
 type SupplierList = {
   id: string;
   supplier_id: string;
@@ -77,6 +83,7 @@ function SuppliersPage() {
   const [supplierDialog, setSupplierDialog] = useState<Supplier | null | "new">(null);
   const [productDialog, setProductDialog] = useState<SupplierProduct | null | "new">(null);
   const [listDialog, setListDialog] = useState<SupplierList | null | "new">(null);
+  const [receiveOpen, setReceiveOpen] = useState(false);
 
   const categories = useQuery<Category[]>({
     queryKey: ["categories"],
@@ -135,7 +142,7 @@ function SuppliersPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id,name,base_price_mxn")
+        .select("id,name,base_price_mxn,supplier_id")
         .order("name");
       if (error) throw error;
       return data ?? [];
@@ -323,9 +330,14 @@ function SuppliersPage() {
                       {selectedSupplier.classification_name || selectedSupplier.categories?.name || "Sin clasificación"}
                     </p>
                   </div>
-                  <Button onClick={() => setProductDialog("new")}>
-                    <PackagePlus className="h-4 w-4 mr-2" /> Producto
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => setReceiveOpen(true)}>
+                      <PackageCheck className="h-4 w-4 mr-2" /> Recibir mercancía
+                    </Button>
+                    <Button variant="outline" onClick={() => setProductDialog("new")}>
+                      <PackagePlus className="h-4 w-4 mr-2" /> Agregar precio
+                    </Button>
+                  </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <Info label="Contacto" value={selectedSupplier.contact_name} />
@@ -337,6 +349,15 @@ function SuppliersPage() {
                   <p className="mt-4 rounded-md bg-muted p-3 text-sm">{selectedSupplier.notes}</p>
                 )}
               </Card>
+
+              <SupplierDebtCard supplierId={selectedSupplier.id} />
+
+              <PriceList
+                items={(supplierProducts.data ?? []) as PriceItem[]}
+                onEdit={(item) => setProductDialog(item as unknown as SupplierProduct)}
+                onDelete={(item) => deleteProduct(item as unknown as SupplierProduct)}
+                onChanged={() => qc.invalidateQueries({ queryKey: ["supplier-products", selectedId] })}
+              />
 
               <Card className="overflow-hidden">
                 <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -401,69 +422,6 @@ function SuppliersPage() {
                 </div>
               </Card>
 
-              <Card className="overflow-hidden">
-                <div className="border-b p-4">
-                  <h3 className="font-semibold">Lista de productos y costos</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Sirve para comparar costos aunque no haya stock o no esté en inventario.
-                  </p>
-                </div>
-                <div className="divide-y">
-                  {(supplierProducts.data ?? []).map((product) => {
-                    const linkedPrice = product.products?.base_price_mxn ?? null;
-                    return (
-                      <div
-                        key={product.id}
-                        className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium">{product.name}</p>
-                            {product.categories?.name && <Badge variant="secondary">{product.categories.name}</Badge>}
-                            {!product.is_available && <Badge variant="outline">No disponible</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {product.supplier_sku ? `SKU ${product.supplier_sku} · ` : ""}
-                            {product.products?.name ? `Ligado a ${product.products.name}` : "No ligado a inventario"}
-                          </p>
-                          {product.description && <p className="mt-1 text-sm">{product.description}</p>}
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            {product.min_order_qty ? <span>Mínimo {product.min_order_qty}</span> : null}
-                            {product.lead_time_days ? <span>Entrega {product.lead_time_days} días</span> : null}
-                            {product.last_quoted_at ? <span>Cotizado {product.last_quoted_at}</span> : null}
-                          </div>
-                        </div>
-                        <div className="text-left md:text-right">
-                          <p className="font-numeric text-lg font-semibold">
-                            {formatMoney(product.unit_cost, product.currency as Currency)}
-                          </p>
-                          {linkedPrice !== null && (
-                            <p className="text-xs text-muted-foreground">
-                              Venta: {formatMoney(linkedPrice)}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex gap-1 md:justify-end">
-                          <Button size="icon" variant="ghost" onClick={() => setProductDialog(product)}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-destructive"
-                            onClick={() => deleteProduct(product)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {(supplierProducts.data ?? []).length === 0 && (
-                    <div className="p-8 text-center text-muted-foreground">Aún no hay productos de proveedor</div>
-                  )}
-                </div>
-              </Card>
             </>
           ) : (
             <Card className="p-10 text-center text-muted-foreground">
@@ -489,10 +447,19 @@ function SuppliersPage() {
         supplierId={selectedSupplier?.id ?? ""}
         defaultCategoryId={selectedSupplier?.category_id ?? ""}
         categories={categories.data ?? []}
-        inventoryProducts={inventoryProducts.data ?? []}
+        inventoryProducts={[...(inventoryProducts.data ?? [])].sort(
+          (x, y) => Number(y.supplier_id === selectedId) - Number(x.supplier_id === selectedId),
+        )}
         onClose={() => setProductDialog(null)}
         onSaved={() => qc.invalidateQueries({ queryKey: ["supplier-products", selectedId] })}
       />
+      {selectedSupplier && (
+        <ReceiveDialog
+          open={receiveOpen}
+          supplier={{ id: selectedSupplier.id, name: selectedSupplier.name }}
+          onClose={() => setReceiveOpen(false)}
+        />
+      )}
       <SupplierListDialog
         open={listDialog !== null && !!selectedSupplier}
         list={listDialog === "new" ? null : listDialog}
@@ -861,6 +828,7 @@ function SupplierProductDialog({
 }) {
   const [form, setForm] = useState({
     name: "",
+    dimensions: "",
     description: "",
     supplier_sku: "",
     category_id: "",
@@ -878,6 +846,7 @@ function SupplierProductDialog({
     if (!open) return;
     setForm({
       name: product?.name ?? "",
+      dimensions: product?.dimensions ?? "",
       description: product?.description ?? "",
       supplier_sku: product?.supplier_sku ?? "",
       category_id: product?.category_id ?? defaultCategoryId,
@@ -902,9 +871,14 @@ function SupplierProductDialog({
       toast.error("Costo inválido");
       return;
     }
+    // Si cambió el costo y no se tocó la fecha, el precio nuevo es de hoy.
+    const today = new Date().toISOString().slice(0, 10);
+    const costChanged = !product || cost !== Number(product.unit_cost);
+    const quotedAt = costChanged && form.last_quoted_at === (product?.last_quoted_at ?? "") ? today : form.last_quoted_at || null;
     const payload = {
       supplier_id: supplierId,
       name: form.name.trim(),
+      dimensions: form.dimensions.trim() || null,
       description: form.description.trim() || null,
       supplier_sku: form.supplier_sku.trim() || null,
       category_id: form.category_id || null,
@@ -913,14 +887,14 @@ function SupplierProductDialog({
       currency: form.currency,
       min_order_qty: form.min_order_qty ? Math.max(0, Number(form.min_order_qty) || 0) : null,
       lead_time_days: form.lead_time_days ? Math.max(0, Number(form.lead_time_days) || 0) : null,
-      last_quoted_at: form.last_quoted_at || null,
+      last_quoted_at: quotedAt,
       notes: form.notes.trim() || null,
       is_available: form.is_available,
       updated_at: new Date().toISOString(),
     };
     const result = product
-      ? await supabase.from("supplier_products").update(payload).eq("id", product.id)
-      : await supabase.from("supplier_products").insert(payload);
+      ? await (supabase as any).from("supplier_products").update(payload).eq("id", product.id)
+      : await (supabase as any).from("supplier_products").insert(payload);
     if (result.error) toast.error(result.error.message);
     else {
       toast.success(product ? "Producto actualizado" : "Producto agregado");
@@ -936,9 +910,17 @@ function SupplierProductDialog({
           <DialogTitle>{product ? "Editar producto de proveedor" : "Nuevo producto de proveedor"}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+          <div>
             <Label>Producto</Label>
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          </div>
+          <div>
+            <Label>Medidas</Label>
+            <Input
+              value={form.dimensions}
+              onChange={(event) => setForm({ ...form, dimensions: event.target.value })}
+              placeholder="Ej. 78 × 85 cm"
+            />
           </div>
           <div>
             <Label>Categoría</Label>
@@ -1020,5 +1002,49 @@ function SupplierProductDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Saldo con el proveedor y botón para abonar (misma ventana que en Inicio).
+function SupplierDebtCard({ supplierId }: { supplierId: string }) {
+  const [pay, setPay] = useState<{ debt: Debt; balance: number } | null>(null);
+  const debts = useQuery<Debt[]>({
+    queryKey: ["supplier-debts", supplierId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("supplier_debts")
+        .select("id,amount,incurred_on,due_on,description, suppliers(name), supplier_debt_payments(amount)")
+        .eq("supplier_id", supplierId)
+        .order("incurred_on");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const open = (debts.data ?? [])
+    .map((d) => ({ debt: d, balance: Number(d.amount) - d.supplier_debt_payments.reduce((s, p) => s + Number(p.amount), 0) }))
+    .filter((x) => x.balance > 0.005);
+  if (open.length === 0) return null;
+  const total = open.reduce((s, x) => s + x.balance, 0);
+  return (
+    <Card className="border-amber-200 bg-amber-50 p-4">
+      <p className="font-medium text-amber-900">
+        Le debes <span className="font-numeric">{formatMoney(total)}</span>
+      </p>
+      <ul className="mt-2 space-y-2">
+        {open.map(({ debt, balance }) => (
+          <li key={debt.id} className="flex items-center gap-2 text-sm text-amber-900">
+            <span className="min-w-0 flex-1">
+              <span className="font-numeric font-semibold">{formatMoney(balance)}</span>
+              <span className="text-amber-800"> · desde {debt.incurred_on}{debt.due_on ? ` · pagar el ${debt.due_on}` : ""}</span>
+              {debt.description && <span className="block truncate text-xs text-amber-800">{debt.description}</span>}
+            </span>
+            <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => setPay({ debt, balance })}>
+              <HandCoins className="mr-1 h-4 w-4" /> Abonar
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {pay && <PayDebtDialog debt={pay.debt} balance={pay.balance} onClose={() => setPay(null)} />}
+    </Card>
   );
 }
