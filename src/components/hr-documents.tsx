@@ -11,7 +11,8 @@ import { formatMoney, formatDateShort } from "@/lib/format";
 import { serviceYearWindows, vacationDaysBySeniority, yearsOfService } from "@/lib/payroll-calc";
 import { esc, printHtml } from "@/lib/print-html";
 
-const db = supabase.from as any;
+// Envuelto en función: pasar supabase.from suelto pierde su `this` y falla.
+const db = (table: string) => (supabase as any).from(table);
 const n = (v: unknown) => Number(v) || 0;
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const COMPANY = "CAsitakin";

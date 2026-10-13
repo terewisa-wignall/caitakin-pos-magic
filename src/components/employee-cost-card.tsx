@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { parseEmployerPdf } from "@/lib/employer-pdf";
 
-const db = supabase.from as any;
+// Envuelto en función: pasar supabase.from suelto pierde su `this` y falla.
+const db = (table: string) => (supabase as any).from(table);
 const BUCKET = "employee-docs";
 const n = (v: unknown) => Number(v) || 0;
 const KIND: Record<string, string> = { imss: "IMSS e Infonavit (SIPARE)", nomina_4pct: "4% impuesto sobre nómina" };

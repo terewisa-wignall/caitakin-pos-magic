@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
 import { christmasBonus, daysAccruedThisYear, lastAnniversary, vacationDaysBySeniority, yearsOfService } from "@/lib/payroll-calc";
 
-const db = supabase.from as any;
+// Envuelto en función: pasar supabase.from suelto pierde su `this` y falla.
+const db = (table: string) => (supabase as any).from(table);
 const n = (v: unknown) => Number(v) || 0;
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 

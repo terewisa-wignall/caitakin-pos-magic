@@ -13,6 +13,7 @@ import { ShoppingCart, TrendingUp, TrendingDown, AlertTriangle, UserCheck, Calen
 import { useAuth } from "@/hooks/use-auth";
 import { useMonthTotals } from "@/routes/app.finance";
 import { nextHoliday } from "@/lib/holidays";
+import { PaymentsDue } from "@/components/dashboard/payments-due";
 
 export const Route = createFileRoute("/app/dashboard")({
   head: () => ({ meta: [{ title: "Inicio · CAsitakin" }] }),
@@ -25,7 +26,8 @@ export const Route = createFileRoute("/app/dashboard")({
   component: Dashboard,
 });
 
-const db = supabase.from as any;
+// Envuelto en función: pasar supabase.from suelto pierde su `this` y falla.
+const db = (table: string) => (supabase as any).from(table);
 
 // Suma por moneda sin convertir: mezclar MXN, USD y EUR en un solo número da un total falso.
 type Totals = Partial<Record<Currency, number>>;
@@ -124,7 +126,7 @@ function Dashboard() {
 
         <LoanRequests />
 
-        <Reminders />
+        <PaymentsDue />
 
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
@@ -214,98 +216,6 @@ function LoanRequests() {
           </li>
         ))}
       </ul>
-    </Card>
-  );
-}
-
-type Reminder = { id: string; title: string; kind: string; due_date: string; amount: number | null; currency: string };
-
-function daysLeft(date: string) {
-  const d = new Date(date + "T00:00:00");
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - t.getTime()) / 86400000);
-}
-
-function Reminders() {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("pago");
-  const [due, setDue] = useState("");
-  const [amount, setAmount] = useState("");
-
-  const list = useQuery({
-    queryKey: ["reminders"],
-    queryFn: async () => {
-      const { data, error } = await db("reminders").select("*").is("done_at", null).order("due_date", { ascending: true }).limit(20);
-      if (error) throw error;
-      return (data ?? []) as Reminder[];
-    },
-  });
-
-  const add = async () => {
-    if (!title.trim() || !due) return toast.error("Falta el nombre y la fecha límite");
-    const { error } = await db("reminders").insert({ title: title.trim(), kind, due_date: due, amount: amount ? Number(amount) : null });
-    if (error) return toast.error(error.message);
-    setTitle(""); setDue(""); setAmount(""); setOpen(false);
-    qc.invalidateQueries({ queryKey: ["reminders"] });
-  };
-
-  const done = async (id: string) => {
-    const { error } = await db("reminders").update({ done_at: new Date().toISOString() }).eq("id", id);
-    if (error) return toast.error(error.message);
-    qc.invalidateQueries({ queryKey: ["reminders"] });
-  };
-
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">Pagos y vencimientos</h2>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Agregar</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Nuevo recordatorio</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <div><Label>Qué es</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Licencia municipal, renta, SAT…" /></div>
-              <div>
-                <Label>Tipo</Label>
-                <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={kind} onChange={(e) => setKind(e.target.value)}>
-                  <option value="pago">Pago por hacer</option>
-                  <option value="permiso">Permiso (municipal, estatal, federal)</option>
-                  <option value="documento">Documento</option>
-                </select>
-              </div>
-              <div><Label>Fecha límite</Label><Input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
-              <div><Label>Monto (opcional)</Label><Input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-              <Button className="w-full" onClick={add}>Guardar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-      {list.isError ? (
-        <p className="text-sm text-destructive">No se pudieron cargar los recordatorios.</p>
-      ) : !list.data?.length ? (
-        <p className="text-sm text-muted-foreground">Nada pendiente.</p>
-      ) : (
-        <ul className="space-y-2">
-          {list.data.map((r) => {
-            const d = daysLeft(r.due_date);
-            const tone = d < 0 ? "text-destructive" : d <= 7 ? "text-amber-600" : "text-muted-foreground";
-            return (
-              <li key={r.id} className="flex items-center gap-2 text-sm">
-                <CalendarClock className={`h-4 w-4 shrink-0 ${tone}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{r.title}{r.amount ? ` · ${formatMoney(Number(r.amount))}` : ""}</p>
-                  <p className={`text-xs ${tone}`}>{d < 0 ? `Vencido hace ${-d} d` : d === 0 ? "Vence hoy" : `En ${d} d`} · {r.kind}</p>
-                </div>
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => done(r.id)} aria-label="Marcar como hecho"><Check className="h-4 w-4" /></Button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </Card>
   );
 }
