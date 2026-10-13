@@ -10,14 +10,14 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { Trash2, Pencil, Plus, Minus, History } from "lucide-react";
+import { Trash2, Pencil, Plus, Minus, History, Receipt } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { formatMoney, formatDate } from "@/lib/format";
+import { formatMoney, formatDate, type Currency } from "@/lib/format";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/sales")({
-  head: () => ({ meta: [{ title: "Ventas · CAsitakin" }] }),
+  head: () => ({ meta: [{ title: "Resumen de ventas · CAsitakin" }] }),
   component: SalesPage,
 });
 
@@ -49,17 +49,82 @@ function toLocalInput(iso: string): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
 }
 
+type Period = "today" | "yesterday" | "week" | "month";
+
+const PERIODS: { id: Period; label: string }[] = [
+  { id: "today", label: "Hoy" },
+  { id: "yesterday", label: "Ayer" },
+  { id: "week", label: "Esta semana" },
+  { id: "month", label: "Este mes" },
+];
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: "Efectivo",
+  transfer: "Transferencia",
+  debit_card: "Débito",
+  credit_card: "Crédito",
+};
+
+const PAYMENT_ICONS: Record<string, string> = {
+  cash: "💵",
+  transfer: "🏦",
+  debit_card: "💳",
+  credit_card: "💳",
+};
+
+type SaleRow = OrderRow & {
+  exchange_rate_used: number | null;
+  order_items: { product_name_snapshot: string; quantity: number }[];
+  payments: { payment_method: string; currency: string; amount: number }[];
+  // Un ticket por venta: Supabase lo devuelve como objeto (o null), no como lista.
+  tickets: { public_token: string } | null;
+};
+
+function periodRange(period: Period) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  if (period === "yesterday") {
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+  } else if (period === "week") {
+    // Semana de lunes a domingo.
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  } else if (period === "month") {
+    start.setDate(1);
+  }
+  return { since: start.toISOString(), until: end.toISOString() };
+}
+
+// Total de la venta en pesos (las ventas en USD/EUR guardan el tipo de cambio usado).
+function orderTotalMxn(o: SaleRow) {
+  const total = Number(o.total || 0);
+  return o.currency === "MXN" ? total : total * Number(o.exchange_rate_used || 1);
+}
+
+function localDayKey(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const dayLabel = (iso: string) => {
+  const s = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "short" }).format(new Date(iso));
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+const timeLabel = (iso: string) =>
+  new Intl.DateTimeFormat("es-MX", { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+
 function SalesPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [days, setDays] = useState(60);
+  const [period, setPeriod] = useState<Period>("today");
   const [sellerFilter, setSellerFilter] = useState<string>("all");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<OrderRow | null>(null);
 
-  const since = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString();
-  }, [days]);
+  const { since, until } = useMemo(() => periodRange(period), [period]);
 
   const sellers = useQuery({
     queryKey: ["sales-sellers"],
@@ -68,90 +133,214 @@ function SalesPage() {
   });
 
   const orders = useQuery({
-    queryKey: ["sales-orders", isAdmin, profile?.id, since, sellerFilter],
+    queryKey: ["sales-orders", isAdmin, profile?.id, since, until, sellerFilter],
     queryFn: async () => {
       let q = supabase
         .from("orders")
-        .select("id,seller_id,total,currency,sold_at,created_at,discount,subtotal")
+        .select(
+          "id,seller_id,total,currency,exchange_rate_used,sold_at,created_at,discount,subtotal, order_items(product_name_snapshot,quantity), payments(payment_method,currency,amount), tickets(public_token)",
+        )
         .gte("sold_at", since)
+        .lt("sold_at", until)
         .order("sold_at", { ascending: false });
       if (!isAdmin && profile?.id) q = q.eq("seller_id", profile.id);
       else if (isAdmin && sellerFilter !== "all") q = q.eq("seller_id", sellerFilter);
-      const { data } = await q;
-      return (data ?? []) as OrderRow[];
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as SaleRow[];
     },
   });
 
   const sellerMap = useMemo(() => {
     const m = new Map<string, string>();
-    (sellers.data ?? []).forEach((s: any) => m.set(s.id, s.name));
+    (sellers.data ?? []).forEach((s: { id: string; name: string }) => m.set(s.id, s.name));
     return m;
   }, [sellers.data]);
+  const sellerName = (id: string) => (isAdmin ? sellerMap.get(id) || "—" : "Tú");
+
+  const summary = useMemo(() => {
+    const list = orders.data ?? [];
+    const totalMxn = list.reduce((s, o) => s + orderTotalMxn(o), 0);
+    const byPayment = new Map<string, { method: string; currency: string; amount: number }>();
+    const bySeller = new Map<string, { totalMxn: number; count: number }>();
+    const byDay = new Map<string, { label: string; totalMxn: number; orders: SaleRow[] }>();
+    for (const o of list) {
+      for (const p of o.payments ?? []) {
+        const key = `${p.payment_method}|${p.currency}`;
+        const cur = byPayment.get(key) ?? { method: p.payment_method, currency: p.currency, amount: 0 };
+        cur.amount += Number(p.amount || 0);
+        byPayment.set(key, cur);
+      }
+      const s = bySeller.get(o.seller_id) ?? { totalMxn: 0, count: 0 };
+      s.totalMxn += orderTotalMxn(o);
+      s.count += 1;
+      bySeller.set(o.seller_id, s);
+      const dk = localDayKey(o.sold_at);
+      const d = byDay.get(dk) ?? { label: dayLabel(o.sold_at), totalMxn: 0, orders: [] };
+      d.totalMxn += orderTotalMxn(o);
+      d.orders.push(o);
+      byDay.set(dk, d);
+    }
+    return {
+      totalMxn,
+      count: list.length,
+      payments: [...byPayment.values()].sort((a, b) => b.amount - a.amount),
+      sellers: [...bySeller.entries()].sort((a, b) => b[1].totalMxn - a[1].totalMxn),
+      days: [...byDay.values()],
+    };
+  }, [orders.data]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <header className="flex flex-wrap items-end gap-3 justify-between">
+    <div className="p-4 md:p-6 space-y-4 max-w-4xl">
+      <header className="space-y-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Ventas</h1>
-          <p className="text-sm text-muted-foreground">
-            {isAdmin ? "Todas las ventas" : "Tus ventas"} · últimos {days} días
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold">Resumen de ventas</h1>
+          <p className="text-sm text-muted-foreground">{isAdmin ? "Todas las ventas" : "Tus ventas"}</p>
         </div>
-        <div className="flex gap-2 items-end">
-          <div>
-            <Label className="text-xs">Días</Label>
-            <Input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 60))} className="w-24" />
-          </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          {PERIODS.map((p) => (
+            <Button
+              key={p.id}
+              size="sm"
+              variant={period === p.id ? "default" : "outline"}
+              onClick={() => setPeriod(p.id)}
+            >
+              {p.label}
+            </Button>
+          ))}
           {isAdmin && (
-            <div>
-              <Label className="text-xs">Vendedora</Label>
-              <select
-                value={sellerFilter}
-                onChange={(e) => setSellerFilter(e.target.value)}
-                className="h-10 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="all">Todas</option>
-                {(sellers.data ?? []).map((s: any) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={sellerFilter}
+              onChange={(e) => setSellerFilter(e.target.value)}
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              aria-label="Vendedora"
+            >
+              <option value="all">Todas las vendedoras</option>
+              {(sellers.data ?? []).map((s: { id: string; name: string }) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
           )}
         </div>
       </header>
 
       <Tabs defaultValue="list">
         <TabsList>
-          <TabsTrigger value="list">Lista</TabsTrigger>
-          {isAdmin && <TabsTrigger value="audit"><History className="h-3.5 w-3.5 mr-1" />Historial</TabsTrigger>}
+          <TabsTrigger value="list">Ventas</TabsTrigger>
+          {isAdmin && <TabsTrigger value="audit"><History className="h-3.5 w-3.5 mr-1" />Historial de cambios</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="list" className="pt-3">
+        <TabsContent value="list" className="pt-3 space-y-4">
           {orders.isLoading ? (
             <p className="text-sm text-muted-foreground">Cargando...</p>
-          ) : (orders.data ?? []).length === 0 ? (
+          ) : orders.isError ? (
+            <Card className="p-8 text-center text-destructive">No se pudieron cargar las ventas.</Card>
+          ) : summary.count === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">Sin ventas en este periodo.</Card>
           ) : (
-            <div className="space-y-2">
-              {(orders.data ?? []).map((o) => (
-                <Card key={o.id} className="p-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold font-numeric">{formatMoney(o.total, o.currency as any)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(o.sold_at)} · {isAdmin ? (sellerMap.get(o.seller_id) || o.seller_id.slice(0, 6)) : "Tú"}
-                    </p>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setEditOrder(o)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteOrder(o)}>
-                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Borrar
-                    </Button>
-                  </div>
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground">Total vendido</p>
+                  <p className="text-3xl font-bold font-numeric text-primary">{formatMoney(summary.totalMxn)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {summary.count} {summary.count === 1 ? "venta" : "ventas"}
+                  </p>
                 </Card>
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Por forma de pago</p>
+                  <ul className="space-y-0.5 text-sm">
+                    {summary.payments.map((p) => (
+                      <li key={`${p.method}|${p.currency}`} className="flex justify-between gap-2">
+                        <span>
+                          {PAYMENT_ICONS[p.method] ?? ""} {PAYMENT_LABELS[p.method] ?? p.method}
+                          {p.currency !== "MXN" && <span className="text-muted-foreground"> ({p.currency})</span>}
+                        </span>
+                        <span className="font-numeric">{formatMoney(p.amount, p.currency as Currency)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Por vendedora</p>
+                  <ul className="space-y-0.5 text-sm">
+                    {summary.sellers.map(([id, s]) => (
+                      <li key={id} className="flex justify-between gap-2">
+                        <span className="truncate">
+                          {sellerName(id)} <span className="text-muted-foreground">· {s.count}</span>
+                        </span>
+                        <span className="font-numeric">{formatMoney(s.totalMxn)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+
+              {summary.days.map((day) => (
+                <section key={day.label} className="space-y-1">
+                  <div className="flex items-baseline justify-between border-b pb-1">
+                    <h2 className="font-semibold">{day.label}</h2>
+                    <span className="text-sm font-numeric">Total {formatMoney(day.totalMxn)}</span>
+                  </div>
+                  {day.orders.map((o) => {
+                    const open = openId === o.id;
+                    const items = (o.order_items ?? []).map(
+                      (it) => `${it.product_name_snapshot.trim()}${it.quantity > 1 ? ` (${it.quantity})` : ""}`,
+                    );
+                    const methods = [...new Set((o.payments ?? []).map((p) => p.payment_method))];
+                    const token = o.tickets?.public_token;
+                    return (
+                      <div key={o.id} className="rounded-md border bg-card">
+                        <button
+                          type="button"
+                          className="w-full p-3 text-left grid grid-cols-[4.75rem_minmax(0,1fr)_auto] gap-x-2 items-center"
+                          onClick={() => setOpenId(open ? null : o.id)}
+                          aria-expanded={open}
+                        >
+                          <span className="font-numeric text-sm text-muted-foreground whitespace-nowrap">{timeLabel(o.sold_at)}</span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium truncate">
+                              {sellerName(o.seller_id)} ·{" "}
+                              {methods.map((m) => `${PAYMENT_ICONS[m] ?? ""} ${PAYMENT_LABELS[m] ?? m}`).join(" + ")}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {items.length === 0
+                                ? "—"
+                                : items.map((it, idx) => (
+                                    <span key={idx} className="block">• {it}</span>
+                                  ))}
+                            </span>
+                          </span>
+                          <span className="text-right">
+                            <span className="block font-semibold font-numeric">{formatMoney(Number(o.total), o.currency as Currency)}</span>
+                            {o.currency !== "MXN" && (
+                              <span className="block text-[11px] text-muted-foreground font-numeric">≈ {formatMoney(orderTotalMxn(o))}</span>
+                            )}
+                          </span>
+                        </button>
+                        {open && (
+                          <div className="flex flex-wrap gap-2 border-t p-2">
+                            {token && (
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={`/t/${token}`} target="_blank" rel="noreferrer">
+                                  <Receipt className="h-3.5 w-3.5 mr-1" /> Ver ticket
+                                </a>
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => setEditOrder(o)}>
+                              <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteOrder(o)}>
+                              <Trash2 className="h-3.5 w-3.5 mr-1" /> Borrar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </section>
               ))}
-            </div>
+            </>
           )}
         </TabsContent>
 

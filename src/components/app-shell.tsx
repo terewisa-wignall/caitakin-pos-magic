@@ -14,23 +14,32 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  // Nombre corto para la barra inferior del celular.
+  short?: string;
+  icon: typeof LayoutDashboard;
+  group?: string;
+  adminOnly?: boolean;
+};
 
+// Ordenado como el día en la tienda: abrir caja → cobrar → revisar ventas.
 const items: NavItem[] = [
-  { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
-  { to: "/app/sell", label: "Vender", icon: ShoppingCart },
-  { to: "/app/sales", label: "Ventas", icon: ListOrdered },
-  { to: "/app/inventory", label: "Inventario", icon: Package },
-  { to: "/app/cash", label: "Caja", icon: Wallet },
-  { to: "/app/payroll", label: "Nómina", icon: ReceiptText },
-  { to: "/app/schedule", label: "Horarios", icon: CalendarDays },
-  { to: "/app/reports", label: "Reportes", icon: BarChart3, adminOnly: true },
-  { to: "/app/commissions", label: "Comisiones", icon: Coins },
-  { to: "/app/finance", label: "Finanzas", icon: Landmark, adminOnly: true },
-  { to: "/app/suppliers", label: "Proveedores", icon: Truck, adminOnly: true },
-  { to: "/app/hr", label: "RRHH", icon: IdCard, adminOnly: true },
-  { to: "/app/users", label: "Usuarios", icon: Users, adminOnly: true },
-  { to: "/app/settings", label: "Configuración", icon: Settings, adminOnly: true },
+  { to: "/app/dashboard", label: "Inicio", icon: LayoutDashboard, adminOnly: true },
+  { to: "/app/cash", label: "Caja", icon: Wallet, group: "Tienda" },
+  { to: "/app/sell", label: "Cobrar", icon: ShoppingCart, group: "Tienda" },
+  { to: "/app/sales", label: "Resumen de ventas", short: "Ventas", icon: ListOrdered, group: "Tienda" },
+  { to: "/app/inventory", label: "Inventario", icon: Package, group: "Tienda" },
+  { to: "/app/schedule", label: "Horarios", icon: CalendarDays, group: "Equipo" },
+  { to: "/app/commissions", label: "Comisiones", icon: Coins, group: "Equipo" },
+  { to: "/app/payroll", label: "Nómina", icon: ReceiptText, group: "Equipo" },
+  { to: "/app/hr", label: "Empleados", icon: IdCard, group: "Equipo", adminOnly: true },
+  { to: "/app/finance", label: "Finanzas", icon: Landmark, group: "Negocio", adminOnly: true },
+  { to: "/app/reports", label: "Reportes", icon: BarChart3, group: "Negocio", adminOnly: true },
+  { to: "/app/suppliers", label: "Proveedores", icon: Truck, group: "Negocio", adminOnly: true },
+  { to: "/app/users", label: "Usuarios", icon: Users, group: "Ajustes", adminOnly: true },
+  { to: "/app/settings", label: "Configuración", icon: Settings, group: "Ajustes", adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -52,23 +61,30 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const NavList = ({ onNavigate }: { onNavigate?: () => void }) => (
     <nav className="flex flex-col gap-1 p-2">
-      {visible.map((item) => {
+      {visible.map((item, i) => {
         const active = pathname.startsWith(item.to);
         const Icon = item.icon;
+        const newGroup = item.group && item.group !== visible[i - 1]?.group;
         return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-              active
-                ? "bg-primary/10 text-primary"
-                : "text-sidebar-foreground hover:bg-sidebar-accent"
-            }`}
-          >
-            <Icon className="h-5 w-5 shrink-0" />
-            <span className="truncate">{item.label}</span>
-          </Link>
+          <div key={item.to}>
+            {newGroup && (
+              <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {item.group}
+              </p>
+            )}
+            <Link
+              to={item.to}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-primary/10 text-primary"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+              }`}
+            >
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          </div>
         );
       })}
     </nav>
@@ -134,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             return (
               <Link key={item.to} to={item.to} className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] ${active ? "text-primary" : "text-muted-foreground"}`}>
                 <Icon className="h-5 w-5" />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">{item.short ?? item.label}</span>
               </Link>
             );
           })}

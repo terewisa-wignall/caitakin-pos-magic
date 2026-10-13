@@ -15,7 +15,7 @@ import { useMonthTotals } from "@/routes/app.finance";
 import { nextHoliday } from "@/lib/holidays";
 
 export const Route = createFileRoute("/app/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard · CAsitakin" }] }),
+  head: () => ({ meta: [{ title: "Inicio · CAsitakin" }] }),
   beforeLoad: async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });

@@ -73,6 +73,10 @@ export type Database = {
           opening_amount_usd: number
           source_handoff_id: string | null
           status: string
+          terminal_expected_mxn: number | null
+          terminal_note: string | null
+          terminal_receipt_path: string | null
+          terminal_total_mxn: number | null
         }
         Insert: {
           closed_at?: string | null
@@ -88,6 +92,10 @@ export type Database = {
           opening_amount_usd?: number
           source_handoff_id?: string | null
           status?: string
+          terminal_expected_mxn?: number | null
+          terminal_note?: string | null
+          terminal_receipt_path?: string | null
+          terminal_total_mxn?: number | null
         }
         Update: {
           closed_at?: string | null
@@ -103,6 +111,10 @@ export type Database = {
           opening_amount_usd?: number
           source_handoff_id?: string | null
           status?: string
+          terminal_expected_mxn?: number | null
+          terminal_note?: string | null
+          terminal_receipt_path?: string | null
+          terminal_total_mxn?: number | null
         }
         Relationships: [
           {
@@ -1719,6 +1731,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      card_sales_total_mxn: {
+        Args: { p_since: string; p_until: string }
+        Returns: number
+      }
       cash_session_belongs_to_user: {
         Args: { _session_id: string; _user_id: string }
         Returns: boolean

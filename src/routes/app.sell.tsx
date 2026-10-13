@@ -32,7 +32,7 @@ import {
 } from "@/components/sell/checkout-dialog";
 
 export const Route = createFileRoute("/app/sell")({
-  head: () => ({ meta: [{ title: "Vender · CAsitakin" }] }),
+  head: () => ({ meta: [{ title: "Cobrar · CAsitakin" }] }),
   component: SellPage,
 });
 
@@ -354,7 +354,12 @@ function SellPage() {
             {filtered.map((p) => {
               const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
               return (
-                <button key={p.id} onClick={() => setVariantPickerFor(p)} className="text-left">
+                <button
+                  key={p.id}
+                  // Con una sola talla (ej. Unitalla) se agrega directo, sin preguntar.
+                  onClick={() => (p.variants.length === 1 ? addLine(p, p.variants[0]) : setVariantPickerFor(p))}
+                  className="text-left"
+                >
                   <Card className="overflow-hidden hover:shadow-elevated transition-shadow">
                     <div className="aspect-square bg-muted relative">
                       {p.photo_thumb_url || p.photo_url ? (

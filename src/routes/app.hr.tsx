@@ -16,7 +16,7 @@ import { formatMoney } from "@/lib/format";
 
 export const Route = createFileRoute("/app/hr")({
   ssr: false,
-  head: () => ({ meta: [{ title: "RRHH · CAsitakin" }] }),
+  head: () => ({ meta: [{ title: "Empleados · CAsitakin" }] }),
   beforeLoad: async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });
@@ -219,7 +219,7 @@ function HRPage() {
     <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold">RRHH</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Empleados</h1>
           <p className="text-sm text-muted-foreground">Expediente de vendedoras</p>
         </div>
         <Button onClick={() => setOpen(true)} size="sm"><UserPlus className="h-4 w-4 mr-1" /> Agregar</Button>

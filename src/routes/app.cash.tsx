@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Wallet, ArrowDownCircle, ArrowUpCircle, Lock, Unlock, Send, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Lock, Unlock, Send, CheckCircle2, Camera, CreditCard } from "lucide-react";
+import { useRef, useState } from "react";
+import { compressDocumentPhoto } from "@/lib/image-compress";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { formatMoney, formatDate, type Currency } from "@/lib/format";
@@ -234,6 +235,7 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
   const [toSellerId, setToSellerId] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const terminal = useTerminalClose(type === "close");
 
   const openingMxn = countTotal(mxnCounts, MXN_DENOMINATIONS) + Math.max(0, Number(mxnCoins) || 0);
   const openingUsd = countTotal(usdCounts, USD_DENOMINATIONS);
@@ -254,9 +256,29 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
         });
         if (error) throw error; toast.success("Caja abierta");
       } else if (type === "close") {
+        if (terminal.required && !terminal.ready) {
+          toast.error(terminal.missingMessage);
+          setLoading(false);
+          return;
+        }
+        let receiptPath: string | null = null;
+        if (terminal.photo) {
+          const file = await compressDocumentPhoto(terminal.photo);
+          receiptPath = `${userId}/cash-close/${session.id}-${crypto.randomUUID()}.jpg`;
+          const { error: upErr } = await supabase.storage.from("sale-docs").upload(receiptPath, file, { upsert: false });
+          if (upErr) throw upErr;
+        }
         const { error } = await supabase.from("cash_sessions").update({
           status: "closed", closed_by: userId, closed_at: new Date().toISOString(),
           closing_amount_mxn: mxn, closing_amount_usd: usd, closing_amount_eur: eur,
+          ...(terminal.expected != null || terminal.photo
+            ? {
+                terminal_expected_mxn: terminal.expected,
+                terminal_total_mxn: terminal.total,
+                terminal_receipt_path: receiptPath,
+                terminal_note: terminal.note.trim() || null,
+              }
+            : {}),
         }).eq("id", session.id);
         if (error) throw error; toast.success("Caja cerrada");
       } else if (type === "handoff") {
@@ -288,6 +310,7 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
         if (error) throw error; toast.success("Registrado");
       }
       resetCashCount(); setConcept(""); setAmount(0); setToSellerId(""); setNote("");
+      terminal.reset();
       onClose();
     } catch (e: any) { toast.error(e.message || "Error"); }
     finally { setLoading(false); }
@@ -297,7 +320,7 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
 
   return (
     <Dialog open={!!type} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className={type === "open" ? "max-h-[90vh] overflow-y-auto" : undefined}>
+      <DialogContent className={type === "open" || type === "close" ? "max-h-[90vh] overflow-y-auto" : undefined}>
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         {type === "open" && (
           <div className="space-y-4">
@@ -344,6 +367,7 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
             <div><Label>USD</Label><Input type="number" value={usd} onChange={(e) => setUsd(Number(e.target.value))} className="font-numeric" /></div>
             <div><Label>EUR</Label><Input type="number" value={eur} onChange={(e) => setEur(Number(e.target.value))} className="font-numeric" /></div>
             {type === "handoff" && <div><Label>Nota</Label><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Opcional" /></div>}
+            {type === "close" && <TerminalCloseSection terminal={terminal} />}
           </div>
         )}
         {(type === "income" || type === "expense") && (
@@ -369,9 +393,139 @@ function SessionDialog({ type, session, sellers = [], shiftSales, userId, onClos
             </div>
           </div>
         )}
-        <Button onClick={submit} disabled={loading} className="w-full">{loading ? "Guardando..." : "Confirmar"}</Button>
+        <Button
+          onClick={submit}
+          disabled={loading || (type === "close" && terminal.loadingExpected)}
+          className="w-full"
+        >
+          {loading ? "Guardando..." : "Confirmar"}
+        </Button>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Cierre de la terminal bancaria: foto del papel de cierre + su total,
+// comparado contra las ventas con tarjeta (débito + crédito) de hoy en toda la tienda.
+function useTerminalClose(enabled: boolean) {
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [totalText, setTotalText] = useState("");
+  const [note, setNote] = useState("");
+
+  const expectedQuery = useQuery({
+    queryKey: ["terminal-expected"],
+    enabled,
+    retry: false,
+    queryFn: async () => {
+      const since = new Date();
+      since.setHours(0, 0, 0, 0);
+      const until = new Date(since);
+      until.setDate(until.getDate() + 1);
+      const { data, error } = await supabase.rpc("card_sales_total_mxn", {
+        p_since: since.toISOString(),
+        p_until: until.toISOString(),
+      });
+      if (error) throw error;
+      return Math.round(Number(data || 0) * 100) / 100;
+    },
+  });
+
+  const expected = expectedQuery.data ?? null;
+  const total = totalText === "" ? null : Math.max(0, Number(totalText) || 0);
+  const diff = expected != null && total != null ? Math.round((total - expected) * 100) / 100 : null;
+  const matches = diff != null && Math.abs(diff) <= 0.5;
+  // Solo se exige si hubo ventas con tarjeta hoy (o si no se pudo consultar).
+  const required = expected == null ? false : expected > 0;
+  const missing = !photo
+    ? "Toma la foto del cierre de la terminal"
+    : total == null
+      ? "Escribe el total del cierre de la terminal"
+      : !matches && !note.trim()
+        ? "Explica la diferencia con la terminal"
+        : null;
+
+  return {
+    photo, setPhoto, totalText, setTotalText, note, setNote,
+    expected, loadingExpected: expectedQuery.isLoading, expectedError: expectedQuery.isError,
+    total, diff, matches, required,
+    ready: !missing,
+    missingMessage: missing ?? "",
+    reset: () => { setPhoto(null); setTotalText(""); setNote(""); },
+  };
+}
+
+function TerminalCloseSection({ terminal }: { terminal: ReturnType<typeof useTerminalClose> }) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="rounded-lg border p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <CreditCard className="h-4 w-4" />
+        <p className="font-medium text-sm">Cierre de la terminal (tarjetas)</p>
+      </div>
+
+      {terminal.loadingExpected ? (
+        <p className="text-xs text-muted-foreground">Calculando ventas con tarjeta de hoy...</p>
+      ) : terminal.expectedError ? (
+        <p className="text-xs text-amber-700">
+          No se pudo calcular lo registrado con tarjeta. Puedes cerrar igual; el administrador lo revisará.
+        </p>
+      ) : terminal.expected === 0 ? (
+        <p className="text-xs text-muted-foreground">Hoy no hubo ventas con tarjeta. No necesitas el cierre de la terminal.</p>
+      ) : (
+        <div className="flex items-baseline justify-between text-sm">
+          <span className="text-muted-foreground">Registrado en la app hoy</span>
+          <span className="font-numeric font-semibold">{formatMoney(terminal.expected ?? 0)}</span>
+        </div>
+      )}
+
+      {terminal.expected !== 0 && (
+        <>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => terminal.setPhoto(e.target.files?.[0] ?? null)}
+          />
+          <Button type="button" variant="outline" className="w-full" onClick={() => cameraRef.current?.click()}>
+            <Camera className="h-4 w-4 mr-2" />
+            {terminal.photo ? "Foto tomada ✓ · Repetir" : "Tomar foto del cierre de la terminal"}
+          </Button>
+          <div>
+            <Label className="text-xs">Total que dice el papel de la terminal (MXN)</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={terminal.totalText}
+              onChange={(e) => terminal.setTotalText(e.target.value)}
+              className="font-numeric"
+            />
+          </div>
+          {terminal.diff != null &&
+            (terminal.matches ? (
+              <p className="rounded-md bg-green-50 p-2 text-sm text-green-900">✅ Cuadra con lo registrado</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-900">
+                  ⚠️ {terminal.diff > 0 ? "La terminal tiene" : "A la terminal le faltan"}{" "}
+                  <span className="font-numeric font-semibold">{formatMoney(Math.abs(terminal.diff))}</span>{" "}
+                  {terminal.diff > 0 ? "más que lo registrado en la app" : "contra lo registrado en la app"}
+                </p>
+                <div>
+                  <Label className="text-xs">¿Por qué no cuadra? (obligatorio)</Label>
+                  <Input
+                    value={terminal.note}
+                    onChange={(e) => terminal.setNote(e.target.value)}
+                    placeholder="Ej. una venta con tarjeta se registró como efectivo"
+                  />
+                </div>
+              </div>
+            ))}
+        </>
+      )}
+    </div>
   );
 }
 
