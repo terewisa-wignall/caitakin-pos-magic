@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, type Currency } from "@/lib/format";
 import { ShoppingCart, TrendingUp, AlertTriangle, Coins, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "@tanstack/react-router";
@@ -18,6 +18,24 @@ export const Route = createFileRoute("/app/dashboard")({
   component: Dashboard,
 });
 
+// Suma por moneda sin convertir: mezclar MXN, USD y EUR en un solo número da un total falso.
+type Totals = Partial<Record<Currency, number>>;
+
+function sumByCurrency(rows: { currency: string | null; amount: number | string | null }[]): Totals {
+  const totals: Totals = {};
+  for (const r of rows) {
+    const cur = (r.currency || "MXN") as Currency;
+    totals[cur] = (totals[cur] ?? 0) + Number(r.amount || 0);
+  }
+  return totals;
+}
+
+function formatTotals(totals: Totals | undefined) {
+  const entries = Object.entries(totals ?? {}).filter(([, v]) => (v ?? 0) !== 0) as [Currency, number][];
+  if (entries.length === 0) return formatMoney(0);
+  return entries.map(([cur, v]) => formatMoney(v, cur)).join(" · ");
+}
+
 function Dashboard() {
   const { profile, isAdmin } = useAuth();
 
@@ -31,7 +49,7 @@ function Dashboard() {
       if (!isAdmin && profile?.id) q = q.eq("seller_id", profile.id);
       const { data: orders } = await q;
 
-      const totalToday = (orders ?? []).reduce((s, o) => s + Number(o.total || 0), 0);
+      const totalToday = sumByCurrency((orders ?? []).map((o) => ({ currency: o.currency, amount: o.total })));
       const countToday = (orders ?? []).length;
 
       const { data: lowStock } = await supabase
@@ -45,7 +63,7 @@ function Dashboard() {
       let commQ = supabase.from("commissions").select("commission_amount,currency,created_at").gte("created_at", todayIso);
       if (!isAdmin && profile?.id) commQ = commQ.eq("seller_id", profile.id);
       const { data: commissions } = await commQ;
-      const commTotal = (commissions ?? []).reduce((s, c) => s + Number(c.commission_amount || 0), 0);
+      const commTotal = sumByCurrency((commissions ?? []).map((c) => ({ currency: c.currency, amount: c.commission_amount })));
 
       // Caja abierta
       const { data: cash } = await supabase.from("cash_sessions").select("*").eq("status", "open").limit(1).maybeSingle();
@@ -64,8 +82,8 @@ function Dashboard() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatCard icon={ShoppingCart} label="Ventas hoy" value={formatMoney(s?.totalToday ?? 0)} hint={`${s?.countToday ?? 0} órdenes`} tone="primary" />
-        <StatCard icon={Coins} label="Comisión hoy" value={formatMoney(s?.commTotal ?? 0)} hint={`${profile?.commission_rate ?? 5}%`} tone="accent" />
+        <StatCard icon={ShoppingCart} label="Ventas hoy" value={formatTotals(s?.totalToday)} hint={`${s?.countToday ?? 0} órdenes`} tone="primary" />
+        <StatCard icon={Coins} label="Comisión hoy" value={formatTotals(s?.commTotal)} hint={`${profile?.commission_rate ?? 5}%`} tone="accent" />
         <StatCard icon={Wallet} label="Caja" value={s?.cash ? "Abierta" : "Cerrada"} hint={s?.cash ? "En operación" : "Necesita apertura"} tone={s?.cash ? "success" : "muted"} />
         <StatCard icon={AlertTriangle} label="Poco stock" value={String(s?.lowStock.length ?? 0)} hint="Variantes < 5" tone="destructive" />
       </div>
