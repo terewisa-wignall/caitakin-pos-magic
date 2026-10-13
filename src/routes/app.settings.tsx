@@ -147,6 +147,8 @@ function SettingsPage() {
         <h1 className="text-2xl md:text-3xl font-bold">Configuración</h1>
       </header>
 
+      <AdminWhatsappCard />
+
       <Card className="p-5">
         <h2 className="font-semibold mb-3">Tipos de cambio (a MXN)</h2>
         <div className="space-y-3">
@@ -232,5 +234,38 @@ function SettingsPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function AdminWhatsappCard() {
+  const qc = useQueryClient();
+  const [phone, setPhone] = useState("");
+  const current = useQuery({
+    queryKey: ["app-setting", "admin_whatsapp"],
+    queryFn: async () => {
+      const { data } = await (supabase.from as any)("app_settings").select("value").eq("key", "admin_whatsapp").maybeSingle();
+      return String(data?.value ?? "").replace(/\D/g, "");
+    },
+  });
+  useEffect(() => { setPhone(current.data ?? ""); }, [current.data]);
+
+  const save = async () => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) return toast.error("Escribe el número completo con lada");
+    const { error } = await (supabase.from as any)("app_settings").upsert({ key: "admin_whatsapp", value: digits, updated_at: new Date().toISOString() });
+    if (error) return toast.error(error.message);
+    toast.success("WhatsApp de administración guardado");
+    qc.invalidateQueries({ queryKey: ["app-setting", "admin_whatsapp"] });
+  };
+
+  return (
+    <Card className="p-5">
+      <h2 className="font-semibold mb-1">WhatsApp de administración</h2>
+      <p className="text-xs text-muted-foreground mb-3">Aquí te llegan los recibos de nómina que las vendedoras generan. Con lada de país, por ejemplo 5219841234567.</p>
+      <div className="flex gap-2">
+        <Input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5219841234567" />
+        <Button onClick={save}>Guardar</Button>
+      </div>
+    </Card>
   );
 }

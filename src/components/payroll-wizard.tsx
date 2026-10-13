@@ -21,6 +21,8 @@ import {
   nextPeriod,
   periodLabel,
   proportionalVacationDays,
+  infonavitExplainDates,
+  infonavitForDates,
   round2,
   shiftPeriod,
   vacationDaysBySeniority,
@@ -28,6 +30,7 @@ import {
   WEEKDAY_SHORT,
   yearsOfService,
 } from "@/lib/payroll-calc";
+import { holidayOn } from "@/lib/holidays";
 
 const num = (v: string | number) => Number(v) || 0;
 
@@ -46,7 +49,7 @@ export function PayrollWizard({
   onClose: () => void;
   onSaved: (payment: any) => void;
 }) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
 
   const [periodStart, setPeriodStart] = useState(today);
@@ -61,6 +64,10 @@ export function PayrollWizard({
   const [imss, setImss] = useState("");
   const [infonavit, setInfonavit] = useState("");
   const [loanDeduction, setLoanDeduction] = useState("");
+  const [newLoan, setNewLoan] = useState("");
+  type Extra = { type: "in" | "out"; concept: string; custom: string; amount: string };
+  const [extras, setExtras] = useState<Extra[]>([]);
+  const [infoHint, setInfoHint] = useState("");
   const [otherDeductions, setOtherDeductions] = useState("");
   const [otherNote, setOtherNote] = useState("");
   const [method, setMethod] = useState("cash");
@@ -77,7 +84,7 @@ export function PayrollWizard({
         .from("employee_loans")
         .select("id,balance,installment_amount,mode,status,currency")
         .eq("employee_id", emp.id)
-        .neq("status", "paid")
+        .eq("status", "active")
         .order("start_date", { ascending: true });
       return data ?? [];
     },
@@ -128,6 +135,16 @@ export function PayrollWizard({
       setVacationDays(String(payment.vacation_days ?? 0));
       setAguinaldo(String(payment.christmas_bonus ?? 0));
       setBonus(payment.bonus_amount ? String(payment.bonus_amount) : "");
+      setExtras(
+        Array.isArray(payment.extras)
+          ? payment.extras.map((x: any) => ({
+              type: x.type === "out" ? "out" : "in",
+              concept: x.loan ? "Abono a deuda" : "Otro motivo",
+              custom: x.loan ? "" : String(x.concept ?? ""),
+              amount: String(x.amount ?? ""),
+            }))
+          : [],
+      );
       setSeverance(payment.severance_amount ? String(payment.severance_amount) : "");
       setImss(payment.imss_deduction ? String(payment.imss_deduction) : "");
       setInfonavit(payment.infonavit_deduction ? String(payment.infonavit_deduction) : "");
@@ -141,7 +158,7 @@ export function PayrollWizard({
       setDailyRate(String(emp?.salary ?? 0));
       setVacationDays("0");
       setAguinaldo("0");
-      setBonus(""); setSeverance(""); setImss(""); setInfonavit("");
+      setBonus(""); setSeverance(""); setExtras([]); setImss(""); setInfonavit("");
       setLoanDeduction(""); setOtherDeductions(""); setOtherNote("");
       setMethod("cash"); setNote("");
     }
@@ -158,19 +175,24 @@ export function PayrollWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, payment, lastEnd.data, lastEnd.isLoading, emp?.id]);
 
-  // Infonavit sugerido desde el contrato
+  // Infonavit sugerido desde el contrato (por cuota bimestral: se reparte por los días pagados)
   useEffect(() => {
     if (!open || payment || !contract.data) return;
     const c: any = contract.data;
     if (!c.infonavit_enrolled || !c.infonavit_value) return;
     const rate = num(dailyRate);
-    const days = workedDates.length;
-    const base = rate * days;
+    const dates = workedDates.filter((d) => d >= periodStart && d <= periodEnd);
+    const base = rate * dates.length;
     const value =
-      c.infonavit_type === "percent" ? round2((base * Number(c.infonavit_value)) / 100) : round2(Number(c.infonavit_value));
+      c.infonavit_type === "percent"
+        ? round2((base * Number(c.infonavit_value)) / 100)
+        : c.infonavit_type === "bimonthly"
+          ? infonavitForDates(Number(c.infonavit_value), dates)
+          : round2(Number(c.infonavit_value));
     setInfonavit(String(value));
+    setInfoHint(c.infonavit_type === "bimonthly" ? infonavitExplainDates(Number(c.infonavit_value), dates) ?? "" : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, contract.data, payment]);
+  }, [open, contract.data, payment, periodStart, periodEnd, workedDates]);
 
   // Préstamo sugerido
   useEffect(() => {
@@ -198,19 +220,41 @@ export function PayrollWizard({
     [dailyRate, emp?.hire_date, periodEnd],
   );
 
+  // Finiquito automático: aguinaldo (15 días) + vacaciones + prima, proporcional a los días pagados (÷ 360)
+  useEffect(() => {
+    if (!open || payment || !emp?.weekly_settlement) return;
+    const rate = num(dailyRate);
+    const vd = entitledVacation || 12;
+    setAguinaldo(String(round2((rate * 15 * daysWorked) / 360)));
+    setVacationDays(String(Math.round(((vd * daysWorked) / 360) * 10000) / 10000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, payment, emp?.weekly_settlement, dailyRate, daysWorked, entitledVacation]);
+
   const overlaps = !!lastEnd.data && periodStart <= lastEnd.data && (!payment || payment.period_start > lastEnd.data);
 
+  const holidaysInPeriod = days.filter((d) => holidayOn(d));
+  const holidayDays = workedDates.filter((d) => days.includes(d) && holidayOn(d)).length;
+
+  const extraLines = extras
+    .filter((e) => num(e.amount) > 0)
+    .map((e) => ({ type: e.type, concept: e.concept, label: e.concept === "Otro motivo" ? e.custom.trim() || "Otro motivo" : e.concept, amt: num(e.amount) }));
+  const extrasIn = extraLines.filter((e) => e.type === "in").reduce((a, e) => a + e.amt, 0);
+  const extrasLoan = extraLines.filter((e) => e.type === "out" && e.concept === "Abono a deuda").reduce((a, e) => a + e.amt, 0);
+  const extrasOut = extraLines.filter((e) => e.type === "out" && e.concept !== "Abono a deuda");
+  const extrasOther = extrasOut.reduce((a, e) => a + e.amt, 0);
+
   const totals = computePayroll({
+    holidayDays,
     dailyRate: num(dailyRate),
     daysWorked,
     vacationDays: num(vacationDays),
     christmasBonus: num(aguinaldo),
-    bonus: num(bonus),
+    bonus: num(bonus) + extrasIn,
     severance: num(severance),
     imss: num(imss),
     infonavit: num(infonavit),
-    loan: num(loanDeduction),
-    otherDeductions: num(otherDeductions),
+    loan: num(loanDeduction) + extrasLoan,
+    otherDeductions: num(otherDeductions) + extrasOther,
   });
 
   const setPeriod = (start: string, end: string) => {
@@ -233,7 +277,7 @@ export function PayrollWizard({
   const save = async () => {
     if (!emp?.id) { toast.error("Falta la empleada"); return; }
     if (totals.net <= 0 && totals.grossTotal <= 0) { toast.error("Marca al menos un día trabajado"); return; }
-    if (num(loanDeduction) > loanBalance + 0.01) { toast.error(`El abono no puede pasar del saldo (${formatMoney(loanBalance)})`); return; }
+    if (num(loanDeduction) + extrasLoan > loanBalance + 0.01) { toast.error(`El abono no puede pasar del saldo (${formatMoney(loanBalance)})`); return; }
     if (overlaps && !confirm(`Este periodo se cruza con uno ya pagado (hasta el ${lastEnd.data}). ¿Guardar de todas formas?`)) return;
     setSaving(true);
     const payload: any = {
@@ -244,6 +288,9 @@ export function PayrollWizard({
       paid_at: paidAt,
       worked_dates: workedDates.filter((d) => days.includes(d)).sort(),
       days_worked: daysWorked,
+      holiday_days: holidayDays,
+      double_days: 0,
+      extras: extraLines.map((e) => ({ type: e.type, concept: e.label, amount: e.amt, loan: e.concept === "Abono a deuda" })),
       daily_rate: num(dailyRate),
       gross_amount: totals.grossTotal,
       vacation_days: num(vacationDays),
@@ -257,7 +304,7 @@ export function PayrollWizard({
       loan_deduction: totals.loan,
       loan_id: totals.loan > 0 ? activeLoan?.id ?? null : null,
       other_deductions: totals.otherDeductions,
-      other_deductions_note: otherNote || null,
+      other_deductions_note: [otherNote, ...extrasOut.map((e) => e.label)].filter(Boolean).join(", ") || null,
       amount: totals.net,
       currency: "MXN",
       payment_method: method,
@@ -272,6 +319,13 @@ export function PayrollWizard({
       : await supabase.from("payroll_payments").insert(payload).select("*").maybeSingle();
     setSaving(false);
     if (error) { toast.error(error.message); return; }
+    if (!payment && num(newLoan) > 0) {
+      const { error: loanErr } = await supabase.from("employee_loans").insert({
+        employee_id: emp.id, principal: num(newLoan), balance: 0, status: "requested", mode: "manual", start_date: paidAt, note: "Solicitado desde su recibo",
+      });
+      if (loanErr) toast.error("Recibo guardado, pero no se pudo registrar el préstamo: " + loanErr.message);
+      else toast.success("Solicitud de préstamo enviada: " + formatMoney(num(newLoan)));
+    }
     toast.success(payment ? "Recibo actualizado" : "Recibo guardado");
     onSaved(data);
     onClose();
@@ -343,6 +397,31 @@ export function PayrollWizard({
                 <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => setWorkedDates([])}>Ninguno</Button>
               </div>
             </div>
+            {holidaysInPeriod.length > 0 && (
+              <p className="rounded-lg bg-amber-50 text-amber-800 border border-amber-200 px-3 py-2 text-xs">
+                Festivo en este periodo: {holidaysInPeriod.map((h) => `${Number(h.slice(8, 10))}/${Number(h.slice(5, 7))} ${holidayOn(h)?.name}`).join(", ")}. Si se trabaja, se paga doble extra.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Cobrar desde el</Label>
+                <Input type="date" min={periodStart} max={periodEnd}
+                  value={[...workedDates].filter((d) => days.includes(d)).sort()[0] ?? ""}
+                  onChange={(e) => {
+                    const to = [...workedDates].filter((d) => days.includes(d)).sort().slice(-1)[0] ?? periodEnd;
+                    if (e.target.value) setWorkedDates(dateRange(e.target.value, e.target.value > to ? e.target.value : to));
+                  }} />
+              </div>
+              <div>
+                <Label className="text-xs">hasta el</Label>
+                <Input type="date" min={periodStart} max={periodEnd}
+                  value={[...workedDates].filter((d) => days.includes(d)).sort().slice(-1)[0] ?? ""}
+                  onChange={(e) => {
+                    const from = [...workedDates].filter((d) => days.includes(d)).sort()[0] ?? periodStart;
+                    if (e.target.value) setWorkedDates(dateRange(e.target.value < from ? e.target.value : from, e.target.value));
+                  }} />
+              </div>
+            </div>
             <div className="grid grid-cols-7 gap-1.5">
               {days.map((d) => {
                 const active = workedDates.includes(d);
@@ -357,6 +436,7 @@ export function PayrollWizard({
                   >
                     <span className="block text-[10px] opacity-70">{WEEKDAY_SHORT[weekdayOf(d)]}</span>
                     <span className="block text-sm font-semibold">{Number(d.slice(8, 10))}</span>
+                    {holidayOn(d) && <span className="block text-[9px] font-semibold leading-none pb-0.5">festivo</span>}
                   </button>
                 );
               })}
@@ -383,9 +463,79 @@ export function PayrollWizard({
               <span className="text-muted-foreground">Sueldo · {daysWorked} × {formatMoney(num(dailyRate))}</span>
               <span className="font-semibold font-numeric">{formatMoney(totals.salary)}</span>
             </div>
+            {totals.holidayPay > 0 && (
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Festivo trabajado · {holidayDays} (pago doble extra)</span>
+                <span className="font-semibold font-numeric">{formatMoney(totals.holidayPay)}</span>
+              </div>
+            )}
+            {totals.vacationAmount + totals.vacationPremium + totals.christmasBonus > 0 && (
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Finiquito · {daysWorked} días (automático)</span>
+                <span className="font-semibold font-numeric">{formatMoney(totals.vacationAmount + totals.vacationPremium + totals.christmasBonus)}</span>
+              </div>
+            )}
+            {!isAdmin && totals.infonavit > 0 && (
+              <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Infonavit (automático)</span>
+                  <span className="font-semibold font-numeric">− {formatMoney(totals.infonavit)}</span>
+                </div>
+                {infoHint && <p className="text-[11px] text-muted-foreground mt-1">{infoHint.replace("Infonavit: ", "")}</p>}
+              </div>
+            )}
           </section>
 
-          {/* Ajustes opcionales */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Extras y descuentos</p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+                onClick={() => setExtras((p) => [...p, { type: "in", concept: "Día doble", custom: "", amount: String(round2(num(dailyRate))) }])}>
+                + Agregar
+              </Button>
+            </div>
+            {extras.length === 0 && <p className="text-xs text-muted-foreground">Día doble, bono, premio, abono a una deuda u otro motivo.</p>}
+            {extras.map((x, i) => {
+              const concepts = x.type === "in" ? ["Día doble", "Bono", "Premio", "Otro motivo"] : [...(loanBalance > 0 ? ["Abono a deuda"] : []), "Otro motivo"];
+              const upd = (patch: Partial<Extra>) => setExtras((p) => p.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+              return (
+                <div key={i} className="rounded-lg border p-2 space-y-2">
+                  <div className="grid grid-cols-[96px_1fr_auto] gap-2">
+                    <select className="h-10 rounded-md border bg-background px-2 text-sm" value={x.type}
+                      onChange={(e) => { const t = e.target.value as "in" | "out"; upd({ type: t, concept: t === "in" ? "Día doble" : loanBalance > 0 ? "Abono a deuda" : "Otro motivo", custom: "" }); }}>
+                      <option value="in">Suma</option>
+                      <option value="out">Resta</option>
+                    </select>
+                    <select className="h-10 rounded-md border bg-background px-2 text-sm" value={x.concept}
+                      onChange={(e) => upd({ concept: e.target.value, amount: e.target.value === "Día doble" && !x.amount ? String(round2(num(dailyRate))) : x.amount })}>
+                      {concepts.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <Button type="button" size="icon" variant="ghost" className="h-10 w-10" aria-label="Quitar"
+                      onClick={() => setExtras((p) => p.filter((_, j) => j !== i))}>×</Button>
+                  </div>
+                  {x.concept === "Otro motivo" && (
+                    <Input placeholder="Concepto (ej. uniforme, regalo, anticipo)" value={x.custom} onChange={(e) => upd({ custom: e.target.value })} />
+                  )}
+                  <div>
+                    <Input type="number" inputMode="decimal" step="0.01" placeholder="Monto" value={x.amount} onChange={(e) => upd({ amount: e.target.value })} className="font-numeric" />
+                    {x.concept === "Abono a deuda" && <p className="text-[11px] text-muted-foreground mt-1">Se abona a tu deuda · saldo {formatMoney(loanBalance)}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+
+          {!isAdmin && (
+            <section className="space-y-2">
+              <Label>Solicitar un préstamo</Label>
+              <Input type="number" inputMode="decimal" step="0.01" placeholder="0" value={newLoan}
+                onChange={(e) => setNewLoan(e.target.value)} className="font-numeric" />
+              <p className="text-[11px] text-muted-foreground">Queda como solicitud; administración la acepta o la rechaza.</p>
+            </section>
+          )}
+
+          {/* Ajustes opcionales: solo administración */}
+          {isAdmin && (
           <section className="space-y-2">
             <button
               type="button"
@@ -445,6 +595,7 @@ export function PayrollWizard({
                     <div>
                       <Label>Infonavit</Label>
                       <Input type="number" inputMode="decimal" step="0.01" placeholder="0" value={infonavit} onChange={(e) => setInfonavit(e.target.value)} className="font-numeric" />
+                      {infoHint && <p className="text-[11px] text-muted-foreground mt-1">{infoHint.replace("Infonavit: ", "")}</p>}
                     </div>
                   </div>
                   <div>
@@ -506,6 +657,7 @@ export function PayrollWizard({
               </div>
             )}
           </section>
+          )}
         </div>
 
         {/* Resumen fijo */}

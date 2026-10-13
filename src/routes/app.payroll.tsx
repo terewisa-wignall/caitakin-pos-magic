@@ -13,6 +13,7 @@ import { Download, FileText, IdCard, Plus, Pencil, Share2, Trash2, ChevronLeft, 
 import { formatMoney, formatDateShort } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { PayrollWizard } from "@/components/payroll-wizard";
+import { EmployeeCostCard } from "@/components/employee-cost-card";
 import { downloadReceiptImage, shareReceiptImage, receiptFilename } from "@/lib/receipt-image";
 
 export const Route = createFileRoute("/app/payroll")({
@@ -84,7 +85,7 @@ function MyPayrollView() {
         .from("employee_loans")
         .select("id,balance,installment_amount,mode,status,currency")
         .eq("employee_id", emp.id)
-        .neq("status", "paid");
+        .eq("status", "active");
       return data ?? [];
     },
   });
@@ -324,11 +325,11 @@ function AdminPayrollView() {
   });
 
   const totalsByEmp = useMemo(() => {
-    const map = new Map<string, { month: number; year: number }>();
+    const map = new Map<string, { month: number; year: number; count: number }>();
     (yearPayments.data ?? []).forEach((p: any) => {
-      const entry = map.get(p.employee_id) ?? { month: 0, year: 0 };
+      const entry = map.get(p.employee_id) ?? { month: 0, year: 0, count: 0 };
       entry.year += Number(p.amount) || 0;
-      if (p.paid_at >= monthStart && p.paid_at <= monthEnd) entry.month += Number(p.amount) || 0;
+      if (p.paid_at >= monthStart && p.paid_at <= monthEnd) { entry.month += Number(p.amount) || 0; entry.count += 1; }
       map.set(p.employee_id, entry);
     });
     return map;
@@ -374,27 +375,28 @@ function AdminPayrollView() {
         <Button variant="ghost" size="icon" onClick={() => shiftMonth(1)}><ChevronRight className="h-4 w-4" /></Button>
       </Card>
 
+      <EmployeeCostCard monthStart={monthStart} monthEnd={monthEnd} payments={yearPayments.data ?? []} />
+
       <Card className="p-4">
         <h2 className="font-semibold mb-3 text-sm">Empleadas</h2>
         <ul className="divide-y">
           {(employees.data ?? []).map((e: any) => {
-            const t = totalsByEmp.get(e.id) ?? { month: 0, year: 0 };
+            const t = totalsByEmp.get(e.id) ?? { month: 0, year: 0, count: 0 };
             return (
               <li key={e.id} className="py-2.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setSelectedEmpId(e.id)}>
                   <p className="font-medium truncate flex items-center gap-2">
                     {e.name}
                     {!e.is_active && <Badge variant="outline" className="text-[10px]">Inactiva</Badge>}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {e.position || "—"} · {formatMoney(Number(e.salary))} por día · {labelFreq(e.frequency)}
+                    {e.position || "—"} · gana {formatMoney(Number(e.salary))} por día · se le paga {labelFreq(e.frequency)}
                   </p>
                   <p className="text-[11px] text-muted-foreground font-numeric">
-                    Mes {formatMoney(t.month)} · Año {formatMoney(t.year)}
+                    Pagado en {MONTHS_FULL[month].toLowerCase()}: {formatMoney(t.month)} ({t.count} {t.count === 1 ? "recibo" : "recibos"}) · en {year}: {formatMoney(t.year)}
                   </p>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
-                  <Button size="sm" variant="outline" onClick={() => setSelectedEmpId(e.id)}>Historial</Button>
                   <Button size="sm" onClick={() => setEditing({ mode: "new", emp: e })}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Recibo
                   </Button>
@@ -404,7 +406,7 @@ function AdminPayrollView() {
           })}
           {(employees.data ?? []).length === 0 && (
             <li className="py-6 text-center text-sm text-muted-foreground">
-              No hay empleadas. Ve a RRHH para agregar.
+              No hay empleadas. Agrégalas en RRHH.
             </li>
           )}
         </ul>
@@ -464,20 +466,31 @@ function AdminPayrollView() {
    Recibo imprimible
    ============================================================ */
 function receiptRows(payment: any) {
-  const salary = (Number(payment.daily_rate) || 0) * (Number(payment.days_worked) || 0);
+  const extraRows: any[] = Array.isArray(payment.extras) ? payment.extras : [];
+  const extrasIn = extraRows.filter((x) => x.type === "in").reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const extrasLoan = extraRows.filter((x) => x.type === "out" && x.loan).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const extrasOutOther = extraRows.filter((x) => x.type === "out" && !x.loan).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const days = Number(payment.days_worked) || 0;
+  const rate = Number(payment.daily_rate) || 0;
+  const salary = rate * days;
+  const finiquito =
+    (Number(payment.vacation_amount) || 0) +
+    (Number(payment.vacation_premium) || 0) +
+    (Number(payment.christmas_bonus) || 0);
   const earnings: [string, number][] = [
-    ["Sueldo", salary],
-    ["Vacaciones", Number(payment.vacation_amount) || 0],
-    ["Prima vacacional", Number(payment.vacation_premium) || 0],
-    ["Aguinaldo", Number(payment.christmas_bonus) || 0],
-    ["Bono", Number(payment.bonus_amount) || 0],
+    [`Nómina por día · ${days} × ${formatMoney(rate)}`, salary],
+    [`Festivos trabajados · ${Number(payment.holiday_days) || 0} (doble extra)`, rate * 2 * (Number(payment.holiday_days) || 0)],
+    ["Finiquito mensual", finiquito],
+    ["Bono", Math.max(0, (Number(payment.bonus_amount) || 0) - extrasIn)],
+    ...extraRows.filter((x: any) => x.type === "in").map((x: any): [string, number] => [String(x.concept), Number(x.amount) || 0]),
     ["Indemnizacion", Number(payment.severance_amount) || 0],
   ];
   const deductions: [string, number][] = [
     ["IMSS", Number(payment.imss_deduction) || 0],
     ["Infonavit", Number(payment.infonavit_deduction) || 0],
-    ["Prestamo", Number(payment.loan_deduction) || 0],
-    [payment.other_deductions_note || "Otras", Number(payment.other_deductions) || 0],
+    ["Prestamo", Math.max(0, (Number(payment.loan_deduction) || 0) - extrasLoan)],
+    ...extraRows.filter((x: any) => x.type === "out").map((x: any): [string, number] => [x.loan ? "Abono a deuda" : String(x.concept), Number(x.amount) || 0]),
+    ["Otras", Math.max(0, (Number(payment.other_deductions) || 0) - extrasOutOther)],
   ];
   const totalEarnings = earnings.reduce((s, [, v]) => s + v, 0);
   const totalDeductions = deductions.reduce((s, [, v]) => s + v, 0);
@@ -486,10 +499,19 @@ function receiptRows(payment: any) {
 
 
 function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment: any; emp: any; onClose: () => void }) {
+  const { isAdmin } = useAuth();
+  const adminPhone = useQuery({
+    queryKey: ["app-setting", "admin_whatsapp"],
+    queryFn: async () => {
+      const { data } = await (supabase.from as any)("app_settings").select("value").eq("key", "admin_whatsapp").maybeSingle();
+      return String(data?.value ?? "").replace(/\D/g, "");
+    },
+  });
+  const sendTo = !isAdmin && adminPhone.data ? adminPhone.data : undefined;
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<"png" | "share" | null>(null);
   if (!payment) return null;
-  const { earnings, deductions, totalEarnings, totalDeductions } = receiptRows(payment);
+  const { earnings, deductions } = receiptRows(payment);
 
   const filename = () => receiptFilename(emp?.name ?? "nomina", payment.period_start, payment.period_end);
   const shareText = `Recibo de nómina de ${emp?.name ?? ""} · ${formatDateShort(payment.period_start)} – ${formatDateShort(payment.period_end)} · Total a pagar ${formatMoney(Number(payment.amount) || 0)}`;
@@ -511,8 +533,8 @@ function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment
     if (!cardRef.current) return;
     setBusy("share");
     try {
-      const r = await shareReceiptImage(cardRef.current, filename(), shareText);
-      if (r === "fallback") toast.success("Imagen descargada: adjúntala en WhatsApp");
+      const r = await shareReceiptImage(cardRef.current, filename(), shareText, sendTo);
+      if (r === "fallback") toast.success(sendTo ? "Se abrió el chat con administración: adjunta la imagen descargada" : "Imagen descargada: adjúntala en WhatsApp");
     } catch {
       toast.error("No se pudo compartir el recibo");
     } finally {
@@ -524,48 +546,41 @@ function ReceiptDialog({ open, payment, emp, onClose }: { open: boolean; payment
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{payment.is_settlement ? "Finiquito" : "Recibo de nómina"}</DialogTitle></DialogHeader>
-        <div ref={cardRef} className="border rounded-lg overflow-hidden bg-background">
-          <div className="p-3 border-b">
-            <p className="font-semibold uppercase">{emp?.name}</p>
-            <p className="text-xs text-muted-foreground">{emp?.position || "—"} · NSS {emp?.nss || "—"} · CURP {emp?.curp || "—"} · RFC {emp?.rfc || "—"}</p>
+        <div ref={cardRef} className="border rounded-lg bg-background p-5 space-y-4">
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-primary">CAsitakin</p>
+            <p className="text-lg font-semibold uppercase">{emp?.name}</p>
             <p className="text-xs text-muted-foreground">
-              {formatDateShort(payment.period_start)} – {formatDateShort(payment.period_end)} · {Number(payment.days_worked) || 0} días · pago {formatDateShort(payment.paid_at)}
+              {formatDateShort(payment.period_start)} – {formatDateShort(payment.period_end)} · {Number(payment.days_worked) || 0} días pagados
             </p>
           </div>
-          <div className="grid md:grid-cols-2">
-            <div className="border-b md:border-b-0 md:border-r">
-              <p className="px-3 py-2 bg-muted text-xs font-semibold uppercase">Percepciones {formatMoney(totalEarnings)}</p>
-              {earnings.filter(([, v]) => v > 0).map(([k, v]) => (
-                <div key={k} className="flex justify-between px-3 py-2 text-sm border-b last:border-b-0">
-                  <span className="text-muted-foreground">{k}</span><span className="font-numeric">{formatMoney(v)}</span>
-                </div>
-              ))}
-            </div>
-            <div>
-              <p className="px-3 py-2 bg-muted text-xs font-semibold uppercase">Deducciones {formatMoney(totalDeductions)}</p>
-              {deductions.filter(([, v]) => v > 0).map(([k, v]) => (
-                <div key={k} className="flex justify-between px-3 py-2 text-sm border-b last:border-b-0">
-                  <span className="text-muted-foreground">{k}</span><span className="font-numeric">− {formatMoney(v)}</span>
-                </div>
-              ))}
-              {deductions.every(([, v]) => v <= 0) && <p className="px-3 py-2 text-sm text-muted-foreground">Sin deducciones</p>}
-            </div>
-          </div>
-          <div className="flex items-center justify-between border-t p-4">
+          <div className="flex items-end justify-between border-t pt-3">
             <div>
               <p className="text-xs uppercase text-muted-foreground">Total a pagar</p>
               <p className="text-3xl font-bold font-numeric">{formatMoney(Number(payment.amount) || 0)}</p>
             </div>
-            <p className="text-xs text-muted-foreground text-right">{payment.receipt_number}<br />{payment.note}</p>
+            <p className="text-[11px] text-muted-foreground text-right">{payment.receipt_number}</p>
           </div>
         </div>
+        {isAdmin && (
+          <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-1">
+            <p className="text-[11px] font-semibold uppercase text-muted-foreground">Desglose (solo administración)</p>
+            {earnings.filter(([, v]) => v > 0).map(([k, v]) => (
+              <div key={k} className="flex justify-between"><span>{k}</span><span className="font-numeric">{formatMoney(v)}</span></div>
+            ))}
+            {deductions.filter(([, v]) => v > 0).map(([k, v]) => (
+              <div key={k} className="flex justify-between text-muted-foreground"><span>{k}</span><span className="font-numeric">− {formatMoney(v)}</span></div>
+            ))}
+            {payment.note && <p className="text-xs text-muted-foreground pt-1">{payment.note}</p>}
+          </div>
+        )}
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
           <Button variant="outline" onClick={handleDownload} disabled={busy !== null}>
             <Download className="h-4 w-4 mr-1" /> {busy === "png" ? "Generando..." : "Descargar imagen"}
           </Button>
           <Button onClick={handleShare} disabled={busy !== null}>
-            <Share2 className="h-4 w-4 mr-1" /> {busy === "share" ? "Preparando..." : "Enviar por WhatsApp"}
+            <Share2 className="h-4 w-4 mr-1" /> {busy === "share" ? "Preparando..." : sendTo ? "Enviar a administración" : "Enviar por WhatsApp"}
           </Button>
         </DialogFooter>
       </DialogContent>
