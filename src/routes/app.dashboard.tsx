@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, type Currency } from "@/lib/format";
 import { ShoppingCart, TrendingUp, TrendingDown, AlertTriangle, UserCheck, CalendarClock, Plus, Check, HandCoins, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMonthTotals } from "@/routes/app.finance";
@@ -27,6 +27,24 @@ export const Route = createFileRoute("/app/dashboard")({
 
 const db = supabase.from as any;
 
+// Suma por moneda sin convertir: mezclar MXN, USD y EUR en un solo número da un total falso.
+type Totals = Partial<Record<Currency, number>>;
+
+function sumByCurrency(rows: { currency: string | null; amount: number | string | null }[]): Totals {
+  const totals: Totals = {};
+  for (const r of rows) {
+    const cur = (r.currency || "MXN") as Currency;
+    totals[cur] = (totals[cur] ?? 0) + Number(r.amount || 0);
+  }
+  return totals;
+}
+
+function formatTotals(totals: Totals | undefined) {
+  const entries = Object.entries(totals ?? {}).filter(([, v]) => (v ?? 0) !== 0) as [Currency, number][];
+  if (entries.length === 0) return formatMoney(0);
+  return entries.map(([cur, v]) => formatMoney(v, cur)).join(" · ");
+}
+
 function Dashboard() {
   const { profile } = useAuth();
   const now = new Date();
@@ -36,8 +54,8 @@ function Dashboard() {
     queryKey: ["dashboard-stats"],
     queryFn: async () => {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const { data: orders } = await supabase.from("orders").select("total").gte("sold_at", today.toISOString());
-      const totalToday = (orders ?? []).reduce((s, o) => s + Number(o.total || 0), 0);
+      const { data: orders } = await supabase.from("orders").select("total,currency").gte("sold_at", today.toISOString());
+      const totalToday = sumByCurrency((orders ?? []).map((o) => ({ currency: o.currency, amount: o.total })));
 
       const { data: lowStock } = await supabase
         .from("product_variants")
@@ -76,7 +94,7 @@ function Dashboard() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatCard icon={ShoppingCart} label="Ventas hoy" value={formatMoney(s?.totalToday ?? 0)} hint={`${s?.countToday ?? 0} órdenes`} tone="primary" />
+        <StatCard icon={ShoppingCart} label="Ventas hoy" value={formatTotals(s?.totalToday)} hint={`${s?.countToday ?? 0} órdenes`} tone="primary" />
         <StatCard icon={TrendingUp} label="Ingresos del mes" value={formatMoney(m?.incomeTotal ?? 0)} hint="Ventas y otros ingresos" tone="success" />
         <StatCard icon={TrendingDown} label="Egresos del mes" value={formatMoney(expenses)} hint="Gastos, nómina, comisiones" tone="accent" />
         <StatCard icon={AlertTriangle} label="Poco stock" value={String(s?.lowStock.length ?? 0)} hint="Variantes < 5" tone="destructive" />
