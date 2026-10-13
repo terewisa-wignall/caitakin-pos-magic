@@ -24,6 +24,8 @@ type Reminder = {
   currency: string;
   note: string | null;
   repeat: Repeat;
+  employee_id: string | null;
+  done_at?: string | null;
 };
 type Debt = {
   id: string;
@@ -88,6 +90,13 @@ function nextDue(due: string, repeat: Repeat): string | null {
   return null;
 }
 
+// Monto aproximado de nómina: la mediana de sus últimos 3 recibos (sin finiquitos),
+// para que un recibo raro o duplicado no mueva mucho el estimado.
+function median(values: number[]) {
+  const v = [...values].sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : null;
+}
+
 function shortDate(iso: string) {
   return new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" }).format(parseIso(iso));
 }
@@ -111,6 +120,39 @@ export function PaymentsDue() {
       const { data, error } = await db("reminders").select("*").is("done_at", null).order("due_date", { ascending: true }).limit(50);
       if (error) throw error;
       return (data ?? []) as Reminder[];
+    },
+  });
+
+  // Nóminas cerradas en los últimos 3 días, para ver la confirmación.
+  const recentPaid = useQuery({
+    queryKey: ["reminders", "recent-paid"],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 3 * 86400000).toISOString();
+      const { data, error } = await db("reminders").select("*").eq("kind", "nomina").gte("done_at", since).order("done_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Reminder[];
+    },
+  });
+
+  const employeeIds = [...new Set((reminders.data ?? []).map((r) => r.employee_id).filter(Boolean))] as string[];
+  const estimates = useQuery({
+    queryKey: ["payroll-estimates", employeeIds.join(",")],
+    enabled: employeeIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payroll_payments")
+        .select("employee_id,amount,created_at")
+        .in("employee_id", employeeIds)
+        .eq("is_settlement", false)
+        .order("created_at", { ascending: false })
+        .limit(60);
+      if (error) throw error;
+      const out: Record<string, number> = {};
+      for (const id of employeeIds) {
+        const m = median((data ?? []).filter((p) => p.employee_id === id).slice(0, 3).map((p) => Number(p.amount)));
+        if (m != null) out[id] = m;
+      }
+      return out;
     },
   });
 
@@ -143,13 +185,16 @@ export function PaymentsDue() {
     const next = nextDue(r.due_date, r.repeat);
     if (next) {
       const { error: e2 } = await db("reminders").insert({
-        title: r.title, kind: r.kind, due_date: next, amount: r.amount, currency: r.currency, note: r.note, repeat: r.repeat,
+        title: r.title, kind: r.kind, due_date: next, amount: r.kind === "nomina" ? null : r.amount,
+        currency: r.currency, note: r.kind === "nomina" ? null : r.note, repeat: r.repeat, employee_id: r.employee_id,
       });
       if (e2) toast.error(e2.message);
       else toast.success(`Listo. Siguiente: ${shortDate(next)}`);
     }
     qc.invalidateQueries({ queryKey: ["reminders"] });
   };
+
+  const estimateFor = (r: Reminder) => (r.employee_id ? estimates.data?.[r.employee_id] : undefined);
 
   return (
     <Card className="p-5">
@@ -199,7 +244,11 @@ export function PaymentsDue() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">
                     {r.title}
-                    {r.amount ? <span className="font-numeric"> · {formatMoney(Number(r.amount))}</span> : null}
+                    {r.amount ? (
+                      <span className="font-numeric"> · {formatMoney(Number(r.amount))}</span>
+                    ) : estimateFor(r) ? (
+                      <span className="font-numeric text-muted-foreground"> · ≈ {formatMoney(estimateFor(r)!)}</span>
+                    ) : null}
                   </p>
                   <p className={`text-xs ${tone}`}>
                     {text} · {KIND_LABEL[r.kind] ?? r.kind}
@@ -217,6 +266,19 @@ export function PaymentsDue() {
         </ul>
       )}
 
+      {(recentPaid.data ?? []).length > 0 && (
+        <ul className="mt-3 space-y-1 border-t pt-3">
+          {(recentPaid.data ?? []).map((r) => (
+            <li key={r.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Check className="h-4 w-4 shrink-0 text-green-600" />
+              <span className="truncate">
+                {r.title} · pagada{r.amount ? <span className="font-numeric"> · {formatMoney(Number(r.amount))}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <AddDialog open={addOpen} onClose={() => setAddOpen(false)} />
       {payDebt && <PayDebtDialog debt={payDebt.debt} balance={payDebt.balance} onClose={() => setPayDebt(null)} />}
     </Card>
@@ -231,6 +293,7 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [amount, setAmount] = useState("");
   const [repeat, setRepeat] = useState<string>("");
   const [supplierId, setSupplierId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [incurred, setIncurred] = useState(todayIso());
   const [saving, setSaving] = useState(false);
 
@@ -244,8 +307,18 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     },
   });
 
+  const employees = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["employees-min"],
+    enabled: open && kind === "nomina",
+    queryFn: async () => {
+      const { data, error } = await supabase.from("employees").select("id,name").eq("is_active", true).order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const reset = () => {
-    setTitle(""); setDue(""); setAmount(""); setRepeat(""); setSupplierId(""); setIncurred(todayIso());
+    setTitle(""); setDue(""); setAmount(""); setRepeat(""); setSupplierId(""); setEmployeeId(""); setIncurred(todayIso());
   };
 
   const save = async () => {
@@ -262,6 +335,7 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
         if (!title.trim() || !due) throw new Error("Falta el nombre y la fecha");
         const { error } = await db("reminders").insert({
           title: title.trim(), kind, due_date: due, amount: amount ? Number(amount) : null, repeat: repeat || null,
+          employee_id: kind === "nomina" && employeeId ? employeeId : null,
         });
         if (error) throw error;
         qc.invalidateQueries({ queryKey: ["reminders"] });
@@ -308,6 +382,24 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
             </>
           ) : (
             <>
+              {kind === "nomina" && (
+                <div>
+                  <Label>Empleada</Label>
+                  <select
+                    className={select}
+                    value={employeeId}
+                    onChange={(e) => {
+                      setEmployeeId(e.target.value);
+                      const name = (employees.data ?? []).find((x) => x.id === e.target.value)?.name;
+                      if (name && !title.trim()) setTitle(`Nómina ${name}`);
+                    }}
+                  >
+                    <option value="">Elige…</option>
+                    {(employees.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">Se marca sola como pagada cuando se haga su recibo de nómina.</p>
+                </div>
+              )}
               <div>
                 <Label>Qué es</Label>
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === "nomina" ? "Nómina Olga" : "Renta, licencia, SAT…"} />
