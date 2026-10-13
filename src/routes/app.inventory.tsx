@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { formatMoney } from "@/lib/format";
 import { sortSizes } from "@/lib/sizes";
 import { createThumbFromUrl } from "@/lib/upload-photo";
+import { InventoryBySupplier } from "@/components/inventory/by-supplier";
 
 const QUICK_SIZE_SETS = [
   { id: "unitalla", label: "Unitalla", sizes: ["Unitalla"] },
@@ -34,6 +35,9 @@ const QUICK_SIZE_SETS = [
 
 type InventoryVariant = {
   id: string;
+  variant_name: string;
+  size: string | null;
+  color: string | null;
   stock: number;
 };
 
@@ -44,6 +48,7 @@ type InventoryProduct = {
   photo_thumb_url: string | null;
   base_price_mxn: number;
   is_active: boolean;
+  supplier_id: string | null;
   categories: { name: string } | null;
   variants: InventoryVariant[];
 };
@@ -136,8 +141,9 @@ function OptimizePhotosCard({ products }: { products: InventoryProduct[] }) {
 }
 
 function InventoryList() {
-  const { isSeller: canManageInventory } = useAuth();
+  const { isSeller: canManageInventory, isAdmin } = useAuth();
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"supplier" | "all">("supplier");
   const [showCreate, setShowCreate] = useState(false);
 
   const q = useQuery<InventoryProduct[]>({
@@ -146,7 +152,7 @@ function InventoryList() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id,name,photo_url,photo_thumb_url,base_price_mxn,is_active,categories(name), variants:product_variants(id,stock)",
+          "id,name,photo_url,photo_thumb_url,base_price_mxn,is_active,supplier_id,categories(name), variants:product_variants(id,variant_name,size,color,stock)",
         )
         .order("name");
       if (error) throw error;
@@ -184,6 +190,29 @@ function InventoryList() {
         />
       </div>
 
+      {isAdmin && (
+        <div className="flex rounded-md border p-0.5 w-fit">
+          <Button size="sm" variant={tab === "supplier" ? "default" : "ghost"} onClick={() => setTab("supplier")}>
+            Por proveedor
+          </Button>
+          <Button size="sm" variant={tab === "all" ? "default" : "ghost"} onClick={() => setTab("all")}>
+            Todos los productos
+          </Button>
+        </div>
+      )}
+
+      {isAdmin && tab === "supplier" ? (
+        q.isError ? (
+          <Card className="p-8 text-center">
+            <p className="font-medium text-destructive">No se pudo cargar el inventario</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {q.error instanceof Error ? q.error.message : "Error desconocido"}
+            </p>
+          </Card>
+        ) : (
+          <InventoryBySupplier products={q.data ?? []} search={search} />
+        )
+      ) : (
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {q.isError && (
           <Card className="p-8 text-center col-span-full">
@@ -236,6 +265,7 @@ function InventoryList() {
           </Card>
         )}
       </div>
+      )}
 
       {canManageInventory && (
         <CreateProductDialog open={showCreate} onClose={() => setShowCreate(false)} />

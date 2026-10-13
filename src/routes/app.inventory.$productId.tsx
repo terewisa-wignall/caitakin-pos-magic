@@ -61,6 +61,7 @@ type ProductDetailData = {
   name: string;
   description: string | null;
   category_id: string | null;
+  supplier_id: string | null;
   photo_url: string | null;
   photo_thumb_url: string | null;
   base_price_mxn: number;
@@ -82,7 +83,7 @@ function buildVariantName(size: string, color: string, fallback: string) {
 
 function ProductDetail() {
   const { productId } = Route.useParams();
-  const { isSeller: canManageInventory } = useAuth();
+  const { isSeller: canManageInventory, isAdmin } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -93,6 +94,7 @@ function ProductDetail() {
     name: "",
     description: "",
     category_id: "",
+    supplier_id: "",
     base_price_mxn: "",
     sku: "",
   });
@@ -126,12 +128,24 @@ function ProductDetail() {
     },
   });
 
+  // Proveedores: solo el admin puede leerlos (RLS) y asignarlos.
+  const suppliers = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["suppliers-min"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("suppliers").select("id,name").eq("is_active", true).order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   useEffect(() => {
     if (!product.data) return;
     setProductDraft({
       name: product.data.name,
       description: product.data.description ?? "",
       category_id: product.data.category_id ?? "",
+      supplier_id: product.data.supplier_id ?? "",
       base_price_mxn: String(product.data.base_price_mxn),
       sku: product.data.sku ?? "",
     });
@@ -172,6 +186,7 @@ function ProductDetail() {
           name: productDraft.name.trim(),
           description: productDraft.description.trim() || null,
           category_id: productDraft.category_id || null,
+          ...(isAdmin ? { supplier_id: productDraft.supplier_id || null } : {}),
           base_price_mxn: basePrice,
           sku: productDraft.sku.trim() || null,
           photo_url,
@@ -391,6 +406,26 @@ function ProductDetail() {
                   </SelectContent>
                 </Select>
               </div>
+              {isAdmin && (
+                <div>
+                  <Label>Proveedor</Label>
+                  <Select
+                    value={productDraft.supplier_id}
+                    onValueChange={(v) => setProductDraft({ ...productDraft, supplier_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(suppliers.data ?? []).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label>Precio base MXN *</Label>
                 <Input

@@ -1189,6 +1189,7 @@ export type Database = {
           photo_thumb_url: string | null
           photo_url: string | null
           sku: string | null
+          supplier_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1205,6 +1206,7 @@ export type Database = {
           photo_thumb_url?: string | null
           photo_url?: string | null
           sku?: string | null
+          supplier_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1221,6 +1223,7 @@ export type Database = {
           photo_thumb_url?: string | null
           photo_url?: string | null
           sku?: string | null
+          supplier_id?: string | null
           updated_at?: string
         }
         Relationships: [
