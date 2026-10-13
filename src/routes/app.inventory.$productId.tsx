@@ -66,6 +66,7 @@ type ProductDetailData = {
   base_price_mxn: number;
   sku: string | null;
   is_active: boolean;
+  discontinued: boolean;
   categories: { name: string } | null;
   variants: ProductVariant[];
 };
@@ -279,6 +280,18 @@ function ProductDetail() {
     }
   };
 
+  const toggleDiscontinued = async (discontinued: boolean) => {
+    const { error } = await supabase
+      .from("products")
+      .update({ discontinued })
+      .eq("id", productId);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(discontinued ? "Marcada como descontinuada" : "Ya se vuelve a pedir");
+      refreshProduct();
+    }
+  };
+
   if (product.isLoading) return <div className="p-6">Cargando...</div>;
   if (product.isError) {
     return <div className="p-6 text-destructive">No se pudo cargar el producto.</div>;
@@ -417,6 +430,10 @@ function ProductDetail() {
                 <div className="flex items-center gap-2">
                   <Switch checked={p.is_active} onCheckedChange={toggleActive} />
                   <span className="text-sm">{p.is_active ? "Activo" : "Inactivo"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={p.discontinued} onCheckedChange={toggleDiscontinued} />
+                  <span className="text-sm">Descontinuada (ya no se pide)</span>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={saveProduct} disabled={savingProduct}>

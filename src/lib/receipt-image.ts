@@ -39,8 +39,15 @@ export async function downloadReceiptImage(node: HTMLElement, filename: string) 
  * Comparte la imagen (WhatsApp y demás apps). Si el equipo no permite compartir
  * archivos, descarga la imagen y abre WhatsApp con el resumen escrito.
  */
-export async function shareReceiptImage(node: HTMLElement, filename: string, message: string) {
+export async function shareReceiptImage(node: HTMLElement, filename: string, message: string, phone?: string) {
   const blob = await nodeToPngBlob(node);
+  if (phone) {
+    // Chat directo con administración: WhatsApp web no permite adjuntar la imagen a un chat concreto,
+    // así que se descarga para adjuntarla y el mensaje ya lleva el resumen.
+    downloadBlob(blob, filename);
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+    return "fallback" as const;
+  }
   const file = new File([blob], filename, { type: "image/png" });
   const nav: any = navigator;
   if (nav.canShare?.({ files: [file] }) && nav.share) {

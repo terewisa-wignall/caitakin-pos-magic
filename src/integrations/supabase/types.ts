@@ -385,6 +385,9 @@ export type Database = {
           salary: number
           termination_date: string | null
           updated_at: string
+          vacation_carryover: number
+          vacation_note: string | null
+          weekly_settlement: boolean
         }
         Insert: {
           address?: string | null
@@ -407,6 +410,9 @@ export type Database = {
           salary?: number
           termination_date?: string | null
           updated_at?: string
+          vacation_carryover?: number
+          vacation_note?: string | null
+          weekly_settlement?: boolean
         }
         Update: {
           address?: string | null
@@ -429,6 +435,9 @@ export type Database = {
           salary?: number
           termination_date?: string | null
           updated_at?: string
+          vacation_carryover?: number
+          vacation_note?: string | null
+          weekly_settlement?: boolean
         }
         Relationships: [
           {
@@ -980,6 +989,9 @@ export type Database = {
           created_by: string | null
           currency: string
           daily_rate: number | null
+          double_days: number
+          extras: Json
+          holiday_days: number
           days_worked: number | null
           employee_id: string
           gross_amount: number | null
@@ -1014,6 +1026,9 @@ export type Database = {
           created_by?: string | null
           currency?: string
           daily_rate?: number | null
+          double_days?: number
+          extras?: Json
+          holiday_days?: number
           days_worked?: number | null
           employee_id: string
           gross_amount?: number | null
@@ -1048,6 +1063,9 @@ export type Database = {
           created_by?: string | null
           currency?: string
           daily_rate?: number | null
+          double_days?: number
+          extras?: Json
+          holiday_days?: number
           days_worked?: number | null
           employee_id?: string
           gross_amount?: number | null
@@ -1152,6 +1170,7 @@ export type Database = {
           category_id: string | null
           created_at: string
           description: string | null
+          discontinued: boolean
           id: string
           is_active: boolean
           name: string
@@ -1167,6 +1186,7 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           description?: string | null
+          discontinued?: boolean
           id?: string
           is_active?: boolean
           name: string
@@ -1182,6 +1202,7 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           description?: string | null
+          discontinued?: boolean
           id?: string
           is_active?: boolean
           name?: string

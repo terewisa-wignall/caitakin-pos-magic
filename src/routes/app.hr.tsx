@@ -1,3 +1,4 @@
+import { CatchUpPanel } from "@/components/catch-up-panel";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -218,11 +219,13 @@ function HRPage() {
     <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold">Recursos Humanos</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">RRHH</h1>
           <p className="text-sm text-muted-foreground">Expediente de vendedoras</p>
         </div>
         <Button onClick={() => setOpen(true)} size="sm"><UserPlus className="h-4 w-4 mr-1" /> Agregar</Button>
       </header>
+
+      <CatchUpPanel year={new Date().getFullYear()} />
 
       <div className="grid grid-cols-3 gap-2">
         <Card className="p-3"><div className="flex items-center gap-2 text-muted-foreground text-xs"><Briefcase className="h-3.5 w-3.5" />Activas</div><p className="text-xl font-bold mt-1">{stats.active}</p></Card>

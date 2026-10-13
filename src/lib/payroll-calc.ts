@@ -73,10 +73,16 @@ export type PayrollInput = {
   infonavit: number;
   loan: number;
   otherDeductions: number;
+  /** Festivos trabajados: la ley manda pagar el doble EXTRA (2 × sueldo por cada uno). */
+  holidayDays?: number;
+  /** Días dobles: se paga un día más (1 × sueldo por cada uno). */
+  doubleDays?: number;
 };
 
 export type PayrollTotals = {
   salary: number;
+  holidayPay: number;
+  doublePay: number;
   vacationAmount: number;
   vacationPremium: number;
   christmasBonus: number;
@@ -99,7 +105,9 @@ export function computePayroll(input: PayrollInput): PayrollTotals {
   const aguinaldo = round2(input.christmasBonus);
   const bonus = round2(input.bonus);
   const severance = round2(input.severance);
-  const grossTotal = round2(salary + vacationAmount + vacationPremium + aguinaldo + bonus + severance);
+  const holidayPay = round2(rate * 2 * (Number(input.holidayDays) || 0));
+  const doublePay = round2(rate * (Number(input.doubleDays) || 0));
+  const grossTotal = round2(salary + holidayPay + doublePay + vacationAmount + vacationPremium + aguinaldo + bonus + severance);
 
   const imss = round2(input.imss);
   const infonavit = round2(input.infonavit);
@@ -109,6 +117,8 @@ export function computePayroll(input: PayrollInput): PayrollTotals {
 
   return {
     salary,
+    holidayPay,
+    doublePay,
     vacationAmount,
     vacationPremium,
     christmasBonus: aguinaldo,
@@ -209,4 +219,99 @@ export function findOverlap(
   return periods.find(
     (p) => p.id !== ignoreId && p.period_start <= end && p.period_end >= start,
   );
+}
+
+/** Último aniversario de ingreso (YYYY-MM-DD) en o antes de `at`. Las vacaciones se ganan por año de servicio, no por año calendario. */
+export function lastAnniversary(hireDate: string | null | undefined, at: Date = new Date()): string | null {
+  if (!hireDate) return null;
+  const h = new Date(hireDate + "T00:00:00");
+  if (isNaN(h.getTime())) return null;
+  let a = new Date(at.getFullYear(), h.getMonth(), h.getDate());
+  if (a > at) a = new Date(at.getFullYear() - 1, h.getMonth(), h.getDate());
+  if (a < h) a = h;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${a.getFullYear()}-${pad(a.getMonth() + 1)}-${pad(a.getDate())}`;
+}
+
+/** Ventanas de los últimos `count` años de servicio: del aniversario al día anterior al siguiente. */
+export function serviceYearWindows(hireDate: string | null | undefined, at: Date, count = 3) {
+  const last = lastAnniversary(hireDate, at);
+  if (!last) return [];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const out: { start: string; end: string; years: number }[] = [];
+  const h = new Date(hireDate + "T00:00:00");
+  let start = new Date(last + "T00:00:00");
+  for (let i = 0; i < count; i++) {
+    const next = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+    out.unshift({ start: iso(start), end: iso(new Date(next.getTime() - 86400000)), years: yearsOfService(hireDate, start) });
+    start = new Date(start.getFullYear() - 1, start.getMonth(), start.getDate());
+    if (start < h) break;
+  }
+  return out;
+}
+
+/** Cuota de Infonavit por bimestre repartida por días: monto ÷ días del bimestre × días del periodo. */
+export function infonavitForPeriod(bimonthlyAmount: number, periodStart: string, periodEnd: string): number {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  let total = 0;
+  const cur = new Date(periodStart + "T00:00:00");
+  const end = new Date(periodEnd + "T00:00:00");
+  if (isNaN(cur.getTime()) || isNaN(end.getTime())) return 0;
+  const cache = new Map<string, number>();
+  while (cur <= end) {
+    const m0 = cur.getMonth() - (cur.getMonth() % 2);
+    const key = `${cur.getFullYear()}-${pad(m0 + 1)}`;
+    if (!cache.has(key)) {
+      const first = new Date(cur.getFullYear(), m0, 1);
+      const last = new Date(cur.getFullYear(), m0 + 2, 0);
+      cache.set(key, Math.round((last.getTime() - first.getTime()) / 86400000) + 1);
+    }
+    total += bimonthlyAmount / cache.get(key)!;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return round2(total);
+}
+
+/** Texto que explica el descuento de Infonavit por bimestre: "$2,651.42 por bimestre ÷ 61 días = $43.47 por día × 7 días". */
+export function infonavitExplain(bimonthlyAmount: number, periodStart: string, periodEnd: string): string | null {
+  const s = new Date(periodStart + "T00:00:00");
+  const e = new Date(periodEnd + "T00:00:00");
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return null;
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+  const bim = (d: Date) => d.getFullYear() * 10 + Math.floor(d.getMonth() / 2);
+  const money = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+  const total = infonavitForPeriod(bimonthlyAmount, periodStart, periodEnd);
+  if (bim(s) !== bim(e)) return `Infonavit: ${money(bimonthlyAmount)} por bimestre repartido por días × ${days} días = ${money(total)}`;
+  const m0 = s.getMonth() - (s.getMonth() % 2);
+  const bimDays = Math.round((new Date(s.getFullYear(), m0 + 2, 0).getTime() - new Date(s.getFullYear(), m0, 1).getTime()) / 86400000) + 1;
+  return `Infonavit: ${money(bimonthlyAmount)} por bimestre ÷ ${bimDays} días = ${money(bimonthlyAmount / bimDays)} por día × ${days} días = ${money(total)}`;
+}
+
+/** Infonavit repartido por días PAGADOS: por cada fecha, cuota del bimestre ÷ días de ese bimestre. */
+export function infonavitForDates(bimonthlyAmount: number, dates: string[]): number {
+  const cache = new Map<string, number>();
+  let total = 0;
+  for (const iso of dates) {
+    const d = new Date(iso + "T00:00:00");
+    if (isNaN(d.getTime())) continue;
+    const m0 = d.getMonth() - (d.getMonth() % 2);
+    const key = `${d.getFullYear()}-${m0}`;
+    if (!cache.has(key)) {
+      cache.set(key, Math.round((new Date(d.getFullYear(), m0 + 2, 0).getTime() - new Date(d.getFullYear(), m0, 1).getTime()) / 86400000) + 1);
+    }
+    total += bimonthlyAmount / cache.get(key)!;
+  }
+  return round2(total);
+}
+
+/** Texto: "$2,651.42 por bimestre ÷ 61 días = $43.47 por día × 7 días pagados = $304.26". */
+export function infonavitExplainDates(bimonthlyAmount: number, dates: string[]): string | null {
+  if (!dates.length) return null;
+  const money = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+  const total = infonavitForDates(bimonthlyAmount, dates);
+  const d = new Date(dates[0] + "T00:00:00");
+  const m0 = d.getMonth() - (d.getMonth() % 2);
+  const bimDays = Math.round((new Date(d.getFullYear(), m0 + 2, 0).getTime() - new Date(d.getFullYear(), m0, 1).getTime()) / 86400000) + 1;
+  return `Infonavit: ${money(bimonthlyAmount)} por bimestre ÷ ${bimDays} días = ${money(bimonthlyAmount / bimDays)} por día × ${dates.length} días pagados = ${money(total)}`;
 }
