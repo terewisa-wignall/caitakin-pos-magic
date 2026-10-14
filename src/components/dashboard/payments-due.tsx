@@ -109,7 +109,7 @@ function dueText(due: string | null) {
   return { text, tone };
 }
 
-export function PaymentsDue() {
+export function PaymentsDue({ className }: { className?: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [payDebt, setPayDebt] = useState<{ debt: Debt; balance: number } | null>(null);
@@ -197,7 +197,7 @@ export function PaymentsDue() {
   const estimateFor = (r: Reminder) => (r.employee_id ? estimates.data?.[r.employee_id] : undefined);
 
   return (
-    <Card className="p-5">
+    <Card className={`p-5 ${className ?? ""}`}>
       <div className="flex items-center justify-between mb-1">
         <h2 className="font-semibold">Pagos y vencimientos</h2>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
@@ -223,7 +223,7 @@ export function PaymentsDue() {
                 <li key={it.key} className="flex items-center gap-2 text-sm">
                   <Truck className={`h-4 w-4 shrink-0 ${tone}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">
+                    <p className="font-medium leading-snug">
                       {it.debt.suppliers?.name ?? "Proveedor"} · <span className="font-numeric">{formatMoney(it.balance)}</span>
                     </p>
                     <p className={`text-xs ${tone}`}>
@@ -242,7 +242,7 @@ export function PaymentsDue() {
               <li key={it.key} className="flex items-center gap-2 text-sm">
                 <Icon className={`h-4 w-4 shrink-0 ${tone}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">
+                  <p className="font-medium leading-snug">
                     {r.title}
                     {r.amount ? (
                       <span className="font-numeric"> · {formatMoney(Number(r.amount))}</span>

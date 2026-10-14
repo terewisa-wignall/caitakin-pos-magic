@@ -103,6 +103,8 @@ function Dashboard() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
+        <PaymentsDue className="md:col-span-2" />
+
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Turnos con caja abierta</h2>
@@ -125,8 +127,6 @@ function Dashboard() {
         <HolidayNotice />
 
         <LoanRequests />
-
-        <PaymentsDue />
 
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
