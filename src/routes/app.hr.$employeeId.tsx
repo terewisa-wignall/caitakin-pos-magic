@@ -587,7 +587,7 @@ function LoansTab({ employeeId }: { employeeId: string }) {
     const loan = loans.find((l: any) => l.id === loanId);
     if (!loan) return;
     const { error } = await supabase.rpc("register_loan_payment", {
-      _loan_id: loanId, _amount: amount, _paid_at: pay.paid_at, _note: pay.note || null,
+      _loan_id: loanId, _amount: amount, _paid_at: pay.paid_at, _note: pay.note || undefined,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("Abono registrado");
