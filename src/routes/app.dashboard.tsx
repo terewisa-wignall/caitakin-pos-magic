@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMonthTotals } from "@/routes/app.finance";
 import { nextHoliday } from "@/lib/holidays";
 import { PaymentsDue } from "@/components/dashboard/payments-due";
+import { ExpensesBreakdownDialog } from "@/components/dashboard/expenses-breakdown";
+import { IncomeBreakdownDialog } from "@/components/dashboard/income-breakdown";
 
 export const Route = createFileRoute("/app/dashboard")({
   head: () => ({ meta: [{ title: "Inicio · CAsitakin" }] }),
@@ -51,6 +53,9 @@ function Dashboard() {
   const { profile } = useAuth();
   const now = new Date();
   const month = useMonthTotals(now.getFullYear(), now.getMonth());
+  const [expensesOpen, setExpensesOpen] = useState(false);
+  const [incomeOpen, setIncomeOpen] = useState(false);
+  const navigate = useNavigate();
 
   const stats = useQuery({
     queryKey: ["dashboard-stats"],
@@ -59,14 +64,13 @@ function Dashboard() {
       const { data: orders } = await supabase.from("orders").select("total,currency").gte("sold_at", today.toISOString());
       const totalToday = sumByCurrency((orders ?? []).map((o) => ({ currency: o.currency, amount: o.total })));
 
-      const { data: lowStock } = await supabase
+      // Solo el conteo: el detalle de las alertas vive en Inventario.
+      const { count: lowStockCount } = await supabase
         .from("product_variants")
-        .select("id, variant_name, stock, product:products!inner(name,discontinued)")
+        .select("id, product:products!inner(discontinued)", { count: "exact", head: true })
         .lt("stock", 5)
         .eq("is_active", true)
-        .eq("product.discontinued", false)
-        .order("stock", { ascending: true })
-        .limit(8);
+        .eq("product.discontinued", false);
 
       // Turnos: cajas abiertas y quién las abrió
       const { data: sessions } = await supabase.from("cash_sessions").select("id,opened_at,opened_by").eq("status", "open");
@@ -80,7 +84,7 @@ function Dashboard() {
         name: people?.find((p) => p.id === x.opened_by)?.name ?? "—",
       }));
 
-      return { totalToday, countToday: (orders ?? []).length, lowStock: lowStock ?? [], shifts };
+      return { totalToday, countToday: (orders ?? []).length, lowStockCount: lowStockCount ?? 0, shifts };
     },
   });
 
@@ -97,10 +101,13 @@ function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard icon={ShoppingCart} label="Ventas hoy" value={formatTotals(s?.totalToday)} hint={`${s?.countToday ?? 0} órdenes`} tone="primary" />
-        <StatCard icon={TrendingUp} label="Ingresos del mes" value={formatMoney(m?.incomeTotal ?? 0)} hint="Ventas y otros ingresos" tone="success" />
-        <StatCard icon={TrendingDown} label="Egresos del mes" value={formatMoney(expenses)} hint="Gastos, nómina, comisiones" tone="accent" />
-        <StatCard icon={AlertTriangle} label="Poco stock" value={String(s?.lowStock.length ?? 0)} hint="Variantes < 5" tone="destructive" />
+        <StatCard icon={TrendingUp} label="Ingresos del mes" value={formatMoney(m?.incomeTotal ?? 0)} hint="Ventas y otros ingresos · toca para ver el detalle" tone="success" onClick={() => setIncomeOpen(true)} />
+        <StatCard icon={TrendingDown} label="Egresos del mes" value={formatMoney(expenses)} hint="Gastos, nómina, comisiones · toca para ver el detalle" tone="accent" onClick={() => setExpensesOpen(true)} />
+        <StatCard icon={AlertTriangle} label="Poco stock" value={String(s?.lowStockCount ?? 0)} hint="Variantes < 5 · toca para ver cuáles" tone="destructive" onClick={() => navigate({ to: "/app/inventory" })} />
       </div>
+
+      <IncomeBreakdownDialog open={incomeOpen} onOpenChange={setIncomeOpen} year={now.getFullYear()} month={now.getMonth()} />
+      <ExpensesBreakdownDialog open={expensesOpen} onOpenChange={setExpensesOpen} year={now.getFullYear()} month={now.getMonth()} />
 
       <div className="grid md:grid-cols-2 gap-4">
         <PaymentsDue className="md:col-span-2" />
@@ -139,25 +146,6 @@ function Dashboard() {
             <Link to="/app/inventory" className="rounded-lg border px-3 py-3 text-sm font-medium text-center hover:bg-accent">Inventario</Link>
             <Link to="/app/reports" className="rounded-lg border px-3 py-3 text-sm font-medium text-center hover:bg-accent">Reportes</Link>
           </div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Alertas de stock</h2>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </div>
-          {s?.lowStock.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Todo en orden.</p>
-          ) : (
-            <ul className="space-y-2">
-              {s?.lowStock.map((v: any) => (
-                <li key={v.id} className="flex items-center justify-between text-sm">
-                  <span className="truncate">{v.product?.name} · {v.variant_name}</span>
-                  <span className="font-numeric font-semibold text-destructive">{v.stock}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </Card>
       </div>
     </div>
@@ -220,7 +208,7 @@ function LoanRequests() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, hint, tone }: { icon: any; label: string; value: string; hint?: string; tone?: string }) {
+function StatCard({ icon: Icon, label, value, hint, tone, onClick }: { icon: any; label: string; value: string; hint?: string; tone?: string; onClick?: () => void }) {
   const tones: Record<string, string> = {
     primary: "bg-primary/10 text-primary",
     accent: "bg-accent/30 text-accent-foreground",
@@ -229,7 +217,13 @@ function StatCard({ icon: Icon, label, value, hint, tone }: { icon: any; label: 
     muted: "bg-muted text-muted-foreground",
   };
   return (
-    <Card className="p-4">
+    <Card
+      className={`p-4 ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+    >
       <div className={`inline-flex items-center justify-center h-9 w-9 rounded-lg mb-2 ${tones[tone ?? "primary"]}`}>
         <Icon className="h-5 w-5" />
       </div>

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,6 @@ function startOfDayISO() {
 function startOfMonthISO() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-}
-
-function ymd(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function commissionCutoff(now = new Date()) {
@@ -128,6 +124,8 @@ function CommissionsPage() {
   const [receiptSellerName, setReceiptSellerName] = useState<string>("");
   const [paying, setPaying] = useState<string | null>(null);
   const cutoff = useMemo(() => commissionCutoff(), []);
+  // isAdmin llega después de la primera carga: la administradora abre directo en "Por vendedora".
+  useEffect(() => { if (isAdmin) setMode("by-seller"); }, [isAdmin]);
 
   const q = useQuery({
     queryKey: ["commissions", isAdmin, profile?.id],
@@ -136,14 +134,19 @@ function CommissionsPage() {
       let query = supabase
         .from("commissions")
         .select(
-          "id,commission_amount,commission_rate,currency,created_at,paid_at,payment_method,seller_id, profile:profiles!commissions_seller_id_fkey(name), order:orders(id,total,currency,created_at)",
+          "id,commission_amount,commission_rate,currency,created_at,paid_at,payment_method,seller_id, order:orders(id,total,currency,created_at)",
         )
         .order("created_at", { ascending: false })
-        .limit(300);
+        .limit(1000);
       if (!isAdmin && profile?.id) query = query.eq("seller_id", profile.id);
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as unknown as CommissionRow[];
+      const list = (data ?? []) as unknown as CommissionRow[];
+      // Los nombres se piden aparte: commissions apunta a usuarios, no a profiles.
+      const ids = Array.from(new Set(list.map((c) => c.seller_id)));
+      const { data: people } = ids.length ? await supabase.from("profiles").select("id,name").in("id", ids) : { data: [] as { id: string; name: string }[] };
+      const names = new Map((people ?? []).map((p) => [p.id, p.name]));
+      return list.map((c) => ({ ...c, profile: names.has(c.seller_id) ? { name: names.get(c.seller_id)! } : null }));
     },
   });
 
@@ -177,15 +180,21 @@ function CommissionsPage() {
 
   // Group by seller (admin only view)
   const bySeller = useMemo(() => {
-    const map = new Map<string, { sellerId: string; name: string; cutoffTotal: number; pendingTotal: number; cutoffRows: CommissionRow[]; pendingRows: CommissionRow[] }>();
+    const map = new Map<string, { sellerId: string; name: string; todayTotal: number; todaySales: number; cutoffTotal: number; cutoffSales: number; pendingTotal: number; cutoffRows: CommissionRow[]; pendingRows: CommissionRow[] }>();
+    const dayStart = new Date(startOfDayISO());
     rows.forEach((c) => {
       const key = c.seller_id;
-      const entry = map.get(key) ?? { sellerId: key, name: c.profile?.name || "—", cutoffTotal: 0, pendingTotal: 0, cutoffRows: [], pendingRows: [] };
+      const entry = map.get(key) ?? { sellerId: key, name: c.profile?.name || "—", todayTotal: 0, todaySales: 0, cutoffTotal: 0, cutoffSales: 0, pendingTotal: 0, cutoffRows: [], pendingRows: [] };
+      if (new Date(c.created_at) >= dayStart) {
+        entry.todayTotal += Number(c.commission_amount);
+        entry.todaySales += Number(c.order?.total || 0);
+      }
       if (!c.paid_at) {
         entry.pendingTotal += Number(c.commission_amount);
         entry.pendingRows.push(c);
         if (new Date(c.created_at) >= cutoff.start && new Date(c.created_at) <= cutoff.end) {
           entry.cutoffTotal += Number(c.commission_amount);
+          entry.cutoffSales += Number(c.order?.total || 0);
           entry.cutoffRows.push(c);
         }
       }
@@ -242,7 +251,7 @@ function CommissionsPage() {
           <p className="text-xs text-muted-foreground">{cutoff.label}</p>
           <p className="text-2xl md:text-3xl font-bold font-numeric text-primary">{formatMoney(totalCutoff)}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Pago {formatDateShort(ymd(cutoff.payDate))}
+            Pago {formatDateShort(cutoff.payDate)}
           </p>
         </Card>
         <Card className="p-5">
@@ -276,9 +285,18 @@ function CommissionsPage() {
               <li key={s.sellerId} className="p-4 space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="font-medium truncate">{s.name}</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-[10px]">Corte {formatMoney(s.cutoffTotal)}</Badge>
-                    <Badge variant="secondary" className="text-[10px]">Pendiente {formatMoney(s.pendingTotal)}</Badge>
+                  <Badge variant="secondary" className="text-[10px]">Pendiente total {formatMoney(s.pendingTotal)}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Lleva hoy</p>
+                    <p className="font-numeric font-semibold">{formatMoney(s.todayTotal)}</p>
+                    <p className="text-[11px] text-muted-foreground">de {formatMoney(s.todaySales)} vendidos</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Este corte ({cutoff.label.replace("Corte ", "al ")})</p>
+                    <p className="font-numeric font-semibold text-primary">{formatMoney(s.cutoffTotal)}</p>
+                    <p className="text-[11px] text-muted-foreground">de {formatMoney(s.cutoffSales)} vendidos</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">

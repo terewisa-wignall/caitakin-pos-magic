@@ -50,7 +50,8 @@ export function PayrollWizard({
   onSaved: (payment: any) => void;
 }) {
   const { user, isAdmin } = useAuth();
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const [periodStart, setPeriodStart] = useState(today);
   const [periodEnd, setPeriodEnd] = useState(today);
@@ -274,7 +275,14 @@ export function PayrollWizard({
     setWorkedDates((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
   };
 
+  // Las empleadas solo generan el recibo del periodo en curso (misma regla que la base de datos).
+  const periodAllowed = isAdmin || (periodStart <= periodEnd && periodStart <= today && periodEnd >= addDays(today, -3));
+
   const save = async () => {
+    if (!periodAllowed) {
+      toast.error("Solo puedes generar el recibo del periodo en curso.");
+      return;
+    }
     if (!emp?.id) { toast.error("Falta la empleada"); return; }
     if (totals.net <= 0 && totals.grossTotal <= 0) { toast.error("Marca al menos un día trabajado"); return; }
     if (num(loanDeduction) + extrasLoan > loanBalance + 0.01) { toast.error(`El abono no puede pasar del saldo (${formatMoney(loanBalance)})`); return; }
@@ -344,26 +352,31 @@ export function PayrollWizard({
           {/* Periodo consecutivo */}
           <section className="space-y-2">
             <div className="flex items-center gap-1">
-              <Button type="button" variant="ghost" size="icon" onClick={() => move(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+              {isAdmin ? <Button type="button" variant="ghost" size="icon" onClick={() => move(-1)}><ChevronLeft className="h-4 w-4" /></Button> : <span className="w-9" />}
               <div className="flex-1 text-center">
                 <p className="text-base font-semibold leading-tight">{periodLabel(periodStart, periodEnd, emp?.frequency)}</p>
                 <p className="text-[11px] text-muted-foreground">{periodDays} días · sigue después del último pago</p>
               </div>
-              <Button type="button" variant="ghost" size="icon" onClick={() => move(1)}><ChevronRight className="h-4 w-4" /></Button>
+              {isAdmin ? <Button type="button" variant="ghost" size="icon" onClick={() => move(1)}><ChevronRight className="h-4 w-4" /></Button> : <span className="w-9" />}
             </div>
             {overlaps && (
               <p className="text-[11px] text-destructive text-center">
                 Ojo: ya pagaste hasta el {lastEnd.data}. Usa la flecha para adelantar el periodo.
               </p>
             )}
-            <button
+            {!periodAllowed && (
+              <p className="text-[11px] text-destructive text-center">
+                Este periodo no es el actual. Solo puedes generar el recibo del periodo en curso; pídele a administración el de otro periodo.
+              </p>
+            )}
+            {isAdmin && <button
               type="button"
               onClick={() => setShowDates((v) => !v)}
               className="w-full text-[11px] text-primary flex items-center justify-center gap-1"
             >
               Cambiar fechas o duración <ChevronDown className={`h-3 w-3 transition-transform ${showDates ? "rotate-180" : ""}`} />
-            </button>
-            {showDates && (
+            </button>}
+            {isAdmin && showDates && (
               <div className="space-y-2 rounded-lg border p-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -399,7 +412,7 @@ export function PayrollWizard({
             </div>
             {holidaysInPeriod.length > 0 && (
               <p className="rounded-lg bg-amber-50 text-amber-800 border border-amber-200 px-3 py-2 text-xs">
-                Festivo en este periodo: {holidaysInPeriod.map((h) => `${Number(h.slice(8, 10))}/${Number(h.slice(5, 7))} ${holidayOn(h)?.name}`).join(", ")}. Si se trabaja, se paga doble extra.
+                Festivo en este periodo: {holidaysInPeriod.map((h) => `${holidayOn(h)?.name} (${new Date(h + "T00:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })})`).join(", ")}. Es día de descanso obligatorio (LFT art. 74). Si se trabaja, se paga un salario doble además del que ya le corresponde por el descanso (art. 75).
               </p>
             )}
             <div className="grid grid-cols-2 gap-2">

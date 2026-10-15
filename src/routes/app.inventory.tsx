@@ -39,6 +39,7 @@ type InventoryVariant = {
   size: string | null;
   color: string | null;
   stock: number;
+  is_active?: boolean;
 };
 
 type InventoryProduct = {
@@ -48,6 +49,7 @@ type InventoryProduct = {
   photo_thumb_url: string | null;
   base_price_mxn: number;
   is_active: boolean;
+  discontinued?: boolean;
   supplier_id: string | null;
   categories: { name: string } | null;
   variants: InventoryVariant[];
@@ -152,7 +154,7 @@ function InventoryList() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id,name,photo_url,photo_thumb_url,base_price_mxn,is_active,supplier_id,categories(name), variants:product_variants(id,variant_name,size,color,stock)",
+          "id,name,photo_url,photo_thumb_url,base_price_mxn,is_active,discontinued,supplier_id,categories(name), variants:product_variants(id,variant_name,size,color,stock,is_active)",
         )
         .order("name");
       if (error) throw error;
@@ -163,6 +165,11 @@ function InventoryList() {
   const filtered = (q.data ?? []).filter(
     (p) => !search || p.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const lowStock = (q.data ?? [])
+    .filter((p) => p.is_active !== false && !p.discontinued)
+    .flatMap((p) => p.variants.filter((v) => v.stock < 5 && v.is_active !== false).map((v) => ({ id: v.id, name: p.name, variant: v.variant_name, stock: v.stock })))
+    .sort((a, b) => a.stock - b.stock);
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -177,6 +184,23 @@ function InventoryList() {
           </Button>
         )}
       </header>
+
+      {lowStock.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold">Alertas de stock <span className="text-muted-foreground font-normal text-sm">({lowStock.length} con menos de 5)</span></h2>
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+          </div>
+          <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+            {lowStock.map((v) => (
+              <li key={v.id} className="flex items-center justify-between text-sm gap-3">
+                <span className="truncate">{v.name} · {v.variant}</span>
+                <span className="font-numeric font-semibold text-destructive">{v.stock}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <OptimizePhotosCard products={q.data ?? []} />
 
