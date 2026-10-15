@@ -56,7 +56,7 @@ function AuthPage() {
           .select("is_active")
           .eq("id", userId)
           .maybeSingle();
-        if (profile && !profile.is_active) {
+        if (!profile?.is_active) {
           await supabase.auth.signOut();
           throw new Error("Este usuario está desactivado");
         }

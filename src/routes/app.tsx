@@ -12,7 +12,7 @@ export const Route = createFileRoute("/app")({
       .select("is_active")
       .eq("id", data.user.id)
       .maybeSingle();
-    if (profile && !profile.is_active) {
+    if (!profile?.is_active) {
       await supabase.auth.signOut();
       throw redirect({ to: "/auth" });
     }
