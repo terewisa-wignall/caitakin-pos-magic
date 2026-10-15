@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       cash_movements: {
         Row: {
           amount: number
@@ -460,6 +478,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      employer_contributions: {
+        Row: {
+          imss_total: number
+          infonavit_total: number
+          month: string
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          imss_total?: number
+          infonavit_total?: number
+          month: string
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          imss_total?: number
+          infonavit_total?: number
+          month?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      employer_payments: {
+        Row: {
+          bimester: string | null
+          created_at: string
+          created_by: string | null
+          doc_path: string | null
+          due_date: string | null
+          id: string
+          kind: string
+          obrera: number
+          paid_at: string | null
+          patronal: number
+          period: string
+          receipt_path: string | null
+          reference: string | null
+          total: number
+        }
+        Insert: {
+          bimester?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_path?: string | null
+          due_date?: string | null
+          id?: string
+          kind: string
+          obrera?: number
+          paid_at?: string | null
+          patronal?: number
+          period: string
+          receipt_path?: string | null
+          reference?: string | null
+          total?: number
+        }
+        Update: {
+          bimester?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_path?: string | null
+          due_date?: string | null
+          id?: string
+          kind?: string
+          obrera?: number
+          paid_at?: string | null
+          patronal?: number
+          period?: string
+          receipt_path?: string | null
+          reference?: string | null
+          total?: number
+        }
+        Relationships: []
       }
       employment_contracts: {
         Row: {
@@ -1001,12 +1094,12 @@ export type Database = {
           created_by: string | null
           currency: string
           daily_rate: number | null
-          double_days: number
-          extras: Json
-          holiday_days: number
           days_worked: number | null
+          double_days: number
           employee_id: string
+          extras: Json
           gross_amount: number | null
+          holiday_days: number
           id: string
           imss_deduction: number
           infonavit_deduction: number
@@ -1038,12 +1131,12 @@ export type Database = {
           created_by?: string | null
           currency?: string
           daily_rate?: number | null
-          double_days?: number
-          extras?: Json
-          holiday_days?: number
           days_worked?: number | null
+          double_days?: number
           employee_id: string
+          extras?: Json
           gross_amount?: number | null
+          holiday_days?: number
           id?: string
           imss_deduction?: number
           infonavit_deduction?: number
@@ -1075,12 +1168,12 @@ export type Database = {
           created_by?: string | null
           currency?: string
           daily_rate?: number | null
-          double_days?: number
-          extras?: Json
-          holiday_days?: number
           days_worked?: number | null
+          double_days?: number
           employee_id?: string
+          extras?: Json
           gross_amount?: number | null
+          holiday_days?: number
           id?: string
           imss_deduction?: number
           infonavit_deduction?: number
@@ -1234,6 +1327,13 @@ export type Database = {
             referencedRelation: "categories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -1262,6 +1362,161 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      purchase_order_items: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          purchase_order_id: string
+          quantity: number
+          received_qty: number
+          supplier_product_id: string | null
+          unit_cost: number
+          variant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          purchase_order_id: string
+          quantity: number
+          received_qty?: number
+          supplier_product_id?: string | null
+          unit_cost?: number
+          variant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          purchase_order_id?: string
+          quantity?: number
+          received_qty?: number
+          supplier_product_id?: string | null
+          unit_cost?: number
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_supplier_product_id_fkey"
+            columns: ["supplier_product_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          ordered_at: string
+          received_at: string | null
+          shipping_cost: number
+          status: string
+          supplier_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          ordered_at?: string
+          received_at?: string | null
+          shipping_cost?: number
+          status?: string
+          supplier_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          ordered_at?: string
+          received_at?: string | null
+          shipping_cost?: number
+          status?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reminders: {
+        Row: {
+          amount: number | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          done_at: string | null
+          due_date: string
+          employee_id: string | null
+          id: string
+          kind: string
+          note: string | null
+          repeat: string | null
+          title: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          done_at?: string | null
+          due_date: string
+          employee_id?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          repeat?: string | null
+          title: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          done_at?: string | null
+          due_date?: string
+          employee_id?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          repeat?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       schedule_entries: {
         Row: {
@@ -1438,6 +1693,85 @@ export type Database = {
           },
         ]
       }
+      supplier_debt_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          debt_id: string
+          id: string
+          note: string | null
+          paid_on: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          debt_id: string
+          id?: string
+          note?: string | null
+          paid_on?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          debt_id?: string
+          id?: string
+          note?: string | null
+          paid_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_debt_payments_debt_id_fkey"
+            columns: ["debt_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_debts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_debts: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_on: string | null
+          id: string
+          incurred_on: string
+          supplier_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_on?: string | null
+          id?: string
+          incurred_on?: string
+          supplier_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_on?: string | null
+          id?: string
+          incurred_on?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_debts_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_lists: {
         Row: {
           created_at: string
@@ -1494,12 +1828,54 @@ export type Database = {
           },
         ]
       }
+      supplier_product_prices: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          note: string | null
+          quoted_at: string
+          supplier_product_id: string
+          unit_cost: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          note?: string | null
+          quoted_at?: string
+          supplier_product_id: string
+          unit_cost: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          note?: string | null
+          quoted_at?: string
+          supplier_product_id?: string
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_product_prices_supplier_product_id_fkey"
+            columns: ["supplier_product_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_products: {
         Row: {
           category_id: string | null
           created_at: string
           currency: string
           description: string | null
+          dimensions: string | null
           id: string
           inventory_product_id: string | null
           is_available: boolean
@@ -1508,6 +1884,8 @@ export type Database = {
           min_order_qty: number | null
           name: string
           notes: string | null
+          photo_thumb_url: string | null
+          photo_url: string | null
           supplier_id: string
           supplier_sku: string | null
           unit_cost: number
@@ -1518,6 +1896,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          dimensions?: string | null
           id?: string
           inventory_product_id?: string | null
           is_available?: boolean
@@ -1526,6 +1905,8 @@ export type Database = {
           min_order_qty?: number | null
           name: string
           notes?: string | null
+          photo_thumb_url?: string | null
+          photo_url?: string | null
           supplier_id: string
           supplier_sku?: string | null
           unit_cost?: number
@@ -1536,6 +1917,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          dimensions?: string | null
           id?: string
           inventory_product_id?: string | null
           is_available?: boolean
@@ -1544,6 +1926,8 @@ export type Database = {
           min_order_qty?: number | null
           name?: string
           notes?: string | null
+          photo_thumb_url?: string | null
+          photo_url?: string | null
           supplier_id?: string
           supplier_sku?: string | null
           unit_cost?: number
@@ -1734,6 +2118,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_payroll_loan_deduction_for: {
+        Args: { _payment_id: string }
+        Returns: undefined
+      }
       card_sales_total_mxn: {
         Args: { p_since: string; p_until: string }
         Returns: number
@@ -1758,9 +2146,26 @@ export type Database = {
         Args: { _employee_id: string }
         Returns: string
       }
+      next_reminder_date: {
+        Args: { p_due: string; p_repeat: string }
+        Returns: string
+      }
+      receive_merchandise: {
+        Args: { p_items: Json; p_note?: string; p_supplier_id: string }
+        Returns: string
+      }
       register_loan_payment: {
-        Args: { _loan_id: string; _amount: number; _paid_at: string; _note?: string | null }
+        Args: {
+          _amount: number
+          _loan_id: string
+          _note?: string
+          _paid_at: string
+        }
         Returns: number
+      }
+      reverse_payroll_loan_deduction: {
+        Args: { _payment_id: string }
+        Returns: undefined
       }
       vacation_days_by_seniority: { Args: { hire: string }; Returns: number }
     }
